@@ -846,6 +846,11 @@ export default function MainAnalysisPage({
                 onSaveSnapshot={handleSaveSnapshot}
                 onCopyShareLink={handleCopyShareLink}
                 onCopyReportSummary={handleCopyReportSummary}
+                onPivotMajor={(nextMajor) => {
+                  hasInteractedRef.current = true;
+                  setMajor(nextMajor);
+                  toast.success(`희망 학과를 '${nextMajor}'(으)로 피벗하여 전체 대학을 재분석합니다.`);
+                }}
               />
             </>
           ) : null}

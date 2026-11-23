@@ -1,10 +1,12 @@
 // services/analysis.js
 // UniPick 정시 입시 분석 엔진 (2025학년도 합격선 데이터 기반)
 // - 한/영 전공 입력 정규화 및 계열 자동 분류
-// - 희망 학과(메디컬/첨단·계약/상경·특성화)별 세분화 커트라인 보정
+// - 희망 학과(메디컬/첨단·계약/상경·특성화/광역·전략학과)별 세분화 커트라인 보정
 // - 대학별 실제 영어 등급 감점 반영 및 영어 유불리 진단
 // - 국어·수학·탐구 과목별 강점 분석 및 대학별 반영비율 유불리 산출
 // - 가·나·다군 3장 최적 원서 조합(포트폴리오) 자동 설계
+// - [혁신 기능 1] 최초합 vs 1·2차 추합 vs 최종 추합 차수별 생존 시뮬레이션 (waitlistWave)
+// - [혁신 기능 2] 상위 대학 학과 피벗 & 환산점수 역전 스캐너 (strategyInsights)
 
 const { universityData, DATA_SOURCES } = require('../data/universities');
 
@@ -193,8 +195,6 @@ function findMatchingDepartment(uni, major, category) {
 
 /**
  * 매칭된 학과 및 계열에 따른 현실적인 세분화 커트라인 보정
- * - 의예/치의/한의/약학/수의 등 메디컬 모집단위는 대학 평균 커트라인보다 훨씬 높은 실제 합격선을 반영
- * - 반도체/AI/컴퓨터 계약·첨단학과 및 최상위 인기 학과는 상향 보정
  */
 function getAdjustedCutoffRange(uni, category, matchedDept, hasMedicalDept = true) {
   const baseAvg = uni.cutoff;
@@ -226,6 +226,13 @@ function getAdjustedCutoffRange(uni, category, matchedDept, hasMedicalDept = tru
   } else if (/경영|경제/.test(dept)) {
     targetAvg = baseAvg + 1;
     deptTierLabel = '상경계열 주력';
+  } else if (
+    /인문계|사회과학|공학계열|자유전공|자율전공|열린전공|인터칼리지|퇴계혁신|도시공학|환경공학|건축|고분자|생명화학|가족복지|청소년|특수교육|국어교육|영어영문|영미문화/.test(
+      dept
+    )
+  ) {
+    targetAvg = baseAvg - 2;
+    deptTierLabel = '광역·틈새 전략 학과';
   } else if (category === '예체능') {
     targetAvg = baseAvg - 3;
     deptTierLabel = '예체능 전형';
@@ -350,10 +357,6 @@ function calcUniversityWeightAdvantage(uni, category, subjectProfile) {
   };
 }
 
-/**
- * 내 환산 점수(effectiveScore)와 대학 합격 분포(cutoffRange)를 비교해
- * 추정 합격 가능성(5~98%)과 지원 판정 구분(안정/적정/소신/도전)을 계산합니다.
- */
 function calculateProbability(effectiveScore, cutoffRange) {
   const { min, avg, max } = cutoffRange;
   const diff = avg - effectiveScore;
@@ -397,8 +400,199 @@ function classifySupportTier(probability) {
 }
 
 /**
+ * [혁신 기능 1] 최초합 vs 1·2차 추합 vs 최종 전화찬스 차수별 생존 시뮬레이션
+ * 대학별 충원율(waitlistRatio)과 합격선 분포(cutoffRange)를 기반으로
+ * 내 환산 점수가 어느 추합 차수에서 합격권에 진입하는지 정밀 판정합니다.
+ */
+function calcWaitlistWaveAnalysis(uniEffectiveScore, cutoffRange, waitlistRatio = 75) {
+  const { min, avg, max } = cutoffRange;
+  // 충원율이 높을수록 최초합 컷과 최종 추합 컷 사이의 스펙트럼이 넓어짐
+  const initialOffset = waitlistRatio >= 110 ? 2.5 : waitlistRatio >= 75 ? 2.0 : 1.2;
+  const initialCutoff = Number((avg + initialOffset).toFixed(1));
+  const wave12Cutoff = Number((avg - 1.5).toFixed(1));
+  const finalCutoff = min;
+
+  const rotations = Number((waitlistRatio / 100).toFixed(2));
+
+  let stage = 'out';
+  let stageLabel = '추합권 진입 전';
+  let waveBadge = '상향 돌파 필요';
+  let stageSummary = `전년도 최종 추가합격 마지노선(${finalCutoff}점) 대비 ${Number((finalCutoff - uniEffectiveScore).toFixed(1))}점이 부족합니다.`;
+
+  if (uniEffectiveScore >= initialCutoff) {
+    stage = 'initial';
+    stageLabel = '최초합격 안정권';
+    waveBadge = '최초합 유력';
+    stageSummary = `추가합격 대기 없이 최초합격 발표에서 바로 합격할 가능성이 높은 점수대입니다 (최초합 기준선 +${Number((uniEffectiveScore - initialCutoff).toFixed(1))}점).`;
+  } else if (uniEffectiveScore >= wave12Cutoff) {
+    stage = 'wave12';
+    stageLabel = '1~2차 주력 추합권';
+    waveBadge = '예비 앞번호 · 1~2차 추합';
+    stageSummary = `최초합격선(${initialCutoff}점)에는 소폭 못 미치나, 전년도 충원율(${waitlistRatio}% · 약 ${rotations}바퀴 회전) 기준 1~2차 추가합격에서 안정적으로 흡수되는 구간입니다.`;
+  } else if (uniEffectiveScore >= finalCutoff) {
+    stage = 'final_wave';
+    stageLabel = '3차~최종 문닫기 추합권';
+    waveBadge = '후반 추합 · 전화찬스 경합';
+    stageSummary = `예비번호 중하위권으로 3차 이후 후반부 추가합격 및 최종 등록 마감일 충원(충원율 ${waitlistRatio}%)까지 지켜봐야 하는 소신 경합 구간입니다.`;
+  }
+
+  return {
+    initialCutoff,
+    wave12Cutoff,
+    finalCutoff,
+    topCutoff: max,
+    waitlistRatio,
+    rotations,
+    stage,
+    stageLabel,
+    waveBadge,
+    stageSummary,
+  };
+}
+
+/**
+ * [혁신 기능 2] 상위 대학 학과 피벗 & 환산 역전 스캐너 (Strategy Insights)
+ * - 동일 점수로 더 높은 대학에 들어갈 수 있는 '학과 피벗 찬스'
+ * - 내 영어 등급·과목별 강점이 가장 크게 작용하는 '환산점수 역전 대학'
+ * - 최초합은 어려워 보여도 충원율 덕분에 추합으로 열리는 '고충원 추합 블루오션'
+ */
+function buildStrategyInsights(evaluated, scoreNum, category, safeEnglishGrade) {
+  // 1) 학과 피벗(Department Pivot) 스캐너:
+  // 현재 적정/소신/도전 구간 대학(probability 10% ~ 78%) 내에서 다른 학과로 피벗했을 때 합격률이 상승하는 기회 탐색
+  const departmentPivots = [];
+
+  for (const item of evaluated) {
+    if (item.probability >= 80 || item.probability < 8) continue;
+    const trackDepts = item.departments?.[category] || [];
+    if (trackDepts.length <= 1) continue;
+
+    let bestAlt = null;
+    for (const candidateDept of trackDepts) {
+      if (candidateDept === item.department) continue;
+      // 메디컬 학과로 피벗하는 것은 제외 (일반 학과에서 낮은 컷 학과를 찾는 목적)
+      if (/의예|의학|치의|한의|약학|수의/.test(candidateDept)) continue;
+
+      const altAdj = getAdjustedCutoffRange(item, category, candidateDept, true);
+      const altProb = calculateProbability(item.effectiveScore, altAdj.cutoffRange);
+      const probGain = altProb - item.probability;
+      const cutoffSaved = item.cutoff - altAdj.cutoff;
+
+      if (probGain >= 5 && cutoffSaved >= 1) {
+        if (!bestAlt || probGain > bestAlt.probGain) {
+          const altTier = classifySupportTier(altProb);
+          bestAlt = {
+            universityId: item.id,
+            university: item.university,
+            shortName: item.shortName,
+            group: item.group,
+            fromDepartment: item.department,
+            fromCutoff: item.cutoff,
+            fromProbability: item.probability,
+            fromBucket: item.bucket,
+            toDepartment: candidateDept,
+            toCutoff: altAdj.cutoff,
+            toProbability: altProb,
+            toBucket: altTier.bucket,
+            toTierLabel: altTier.tierLabel,
+            probGain,
+            cutoffSaved,
+            deptTierLabel: altAdj.deptTierLabel,
+            reason: `${item.shortName} 내 '${item.department}'(${item.cutoff}점) 대신 '${candidateDept}'(${altAdj.cutoff}점)으로 학과를 피벗하면 커트라인이 ${cutoffSaved}점 낮아져 합격 적합도가 ${item.probability}% → ${altProb}% (+${probGain}%p)로 급상승합니다.`,
+          };
+        }
+      }
+    }
+
+    if (bestAlt) {
+      departmentPivots.push(bestAlt);
+    }
+  }
+
+  // 합격률 상승폭 및 적정권 진입 우선 정렬
+  departmentPivots.sort((a, b) => {
+    const aEnterTarget = a.fromProbability < 50 && a.toProbability >= 50 ? 1 : 0;
+    const bEnterTarget = b.fromProbability < 50 && b.toProbability >= 50 ? 1 : 0;
+    if (aEnterTarget !== bEnterTarget) return bEnterTarget - aEnterTarget;
+    return b.probGain - a.probGain;
+  });
+
+  // 2) 내 성적 구조 환산 역전 대학 (Score Inversions):
+  // 평균 영어 감점 대비 이득 + 과목 반영비율 이득(weightDelta)이 가장 큰 지원 가능 대학
+  const avgEngPenalty = ENGLISH_PENALTY_MAP[safeEnglishGrade] ?? 0;
+  const scoreInversions = evaluated
+    .filter((u) => u.probability >= 15 && u.probability <= 92)
+    .map((u) => {
+      const engRelativeGain = Number((u.englishPenalty - avgEngPenalty).toFixed(1));
+      const totalRelativeGain = Number((engRelativeGain + (u.weightDelta || 0)).toFixed(1));
+      const maxSubject =
+        u.weights.math >= u.weights.kor && u.weights.math >= u.weights.inq
+          ? `수학 ${u.weights.math}% 강세`
+          : u.weights.kor >= u.weights.inq
+            ? `국어 ${u.weights.kor}% 강세`
+            : `탐구 ${u.weights.inq}% 강세`;
+
+      return {
+        universityId: u.id,
+        university: u.university,
+        shortName: u.shortName,
+        department: u.department,
+        group: u.group,
+        cutoff: u.cutoff,
+        probability: u.probability,
+        bucket: u.bucket,
+        tierLabel: u.tierLabel,
+        engRelativeGain,
+        weightDelta: u.weightDelta || 0,
+        totalRelativeGain,
+        maxSubject,
+        englishRule: u.englishRule,
+        reason:
+          totalRelativeGain > 0
+            ? `동일 총점 경쟁자 대비 환산점수에서 약 +${totalRelativeGain}점 유리합니다 (${maxSubject}${safeEnglishGrade >= 2 ? ` · 영어 ${safeEnglishGrade}등급 감점 ${u.englishPenalty}점` : ''}).`
+            : `${maxSubject} 반영 구조와 전년도 충원율(${u.waitlistRatio}%)을 활용해 전략적 지원이 가능한 대학입니다.`,
+      };
+    })
+    .sort((a, b) => b.totalRelativeGain - a.totalRelativeGain || b.probability - a.probability)
+    .slice(0, 4);
+
+  // 3) 고충원 추합 블루오션 (Waitlist Sweet Spots):
+  // 최초합격선에는 못 미치지만 충원율(70% 이상) 덕분에 1~2차 또는 최종 추합권에 들어오는 대학
+  const waitlistSweetSpots = evaluated
+    .filter(
+      (u) =>
+        (u.waitlistWave.stage === 'wave12' || u.waitlistWave.stage === 'final_wave') &&
+        u.waitlistRatio >= 65
+    )
+    .sort((a, b) => b.waitlistRatio - a.waitlistRatio)
+    .slice(0, 4)
+    .map((u) => ({
+      universityId: u.id,
+      university: u.university,
+      shortName: u.shortName,
+      department: u.department,
+      group: u.group,
+      cutoff: u.cutoff,
+      initialCutoff: u.waitlistWave.initialCutoff,
+      finalCutoff: u.waitlistWave.finalCutoff,
+      waitlistRatio: u.waitlistRatio,
+      rotations: u.waitlistWave.rotations,
+      stage: u.waitlistWave.stage,
+      stageLabel: u.waitlistWave.stageLabel,
+      waveBadge: u.waitlistWave.waveBadge,
+      probability: u.probability,
+      bucket: u.bucket,
+      reason: u.waitlistWave.stageSummary,
+    }));
+
+  return {
+    departmentPivots: departmentPivots.slice(0, 4),
+    scoreInversions,
+    waitlistSweetSpots,
+  };
+}
+
+/**
  * 가·나·다군 3장 최적 원서 조합(포트폴리오) 자동 생성
- * - 동일 대학 중복 없이 가군 1개교, 나군 1개교, 다군 1개교를 배정
  */
 function buildRecommendedPortfolios(evaluated) {
   const groups = ['가군', '나군', '다군'];
@@ -428,7 +622,6 @@ function buildRecommendedPortfolios(evaluated) {
     const usedIds = new Set();
     const slots = {};
 
-    // 다군은 모집 대학이 상대적으로 적으므로 다군 -> 나군 -> 가군 순으로 배정 후 가·나·다 순으로 정렬
     const assignOrder = ['다군', '나군', '가군'];
     for (const g of assignOrder) {
       const rule = slotRules[g];
@@ -452,6 +645,8 @@ function buildRecommendedPortfolios(evaluated) {
           weightAdvantageLabel: chosen.weightAdvantageLabel,
           weightDelta: chosen.weightDelta,
           englishAdvantage: chosen.englishAdvantage,
+          englishPenalty: chosen.englishPenalty,
+          waitlistWave: chosen.waitlistWave,
         };
       } else {
         slots[g] = null;
@@ -463,7 +658,6 @@ function buildRecommendedPortfolios(evaluated) {
       orderedSlots[g] = slots[g] || null;
     }
 
-    // 1개교 이상 합격 기대율: 1 - Π(1 - p_i)
     const activeProbs = Object.values(orderedSlots)
       .filter(Boolean)
       .map((s) => Math.max(0.05, Math.min(0.98, s.probability / 100)));
@@ -521,12 +715,6 @@ function buildRecommendedPortfolios(evaluated) {
 
 /**
  * 핵심 정시 입시 분석 함수
- * @param {object} params
- * @param {number} params.score - 국·수·탐(2) 표준점수 합 (200~450)
- * @param {string} params.major - 희망 학과/전공
- * @param {string|null} [params.categoryOverride] - 계열 수동 지정 ('인문' | '자연' | '예체능')
- * @param {number} [params.englishGrade=1] - 영어 등급 (1~5)
- * @param {object|null} [params.subjects=null] - 과목별 점수 ({ kor, math, sub1, sub2 })
  */
 function analyzeAdmission({ score, major, categoryOverride = null, englishGrade = 1, subjects = null }) {
   const scoreNum = Math.round(Number(score));
@@ -560,7 +748,7 @@ function analyzeAdmission({ score, major, categoryOverride = null, englishGrade 
     percentileEstimate = '상위 25% 이하';
   }
 
-  // 전체 21개 대학에 대해 희망 학과 매칭 + 대학별 영어 감점 + 과목 반영비율 유불리 평가
+  // 전체 21개 대학에 대해 희망 학과 매칭 + 대학별 영어 감점 + 과목 반영비율 유불리 + 추합 차수 시뮬레이션 평가
   const evaluated = universityData
     .filter((uni) => {
       if (category === '예체능' && (uni.departments.예체능 || []).length === 0) {
@@ -596,6 +784,11 @@ function analyzeAdmission({ score, major, categoryOverride = null, englishGrade 
       const probability = calculateProbability(uniEffectiveScore, cutoffRange);
       const tier = classifySupportTier(probability);
       const scoreDelta = Number((uniEffectiveScore - cutoffRange.avg).toFixed(1));
+      const waitlistWave = calcWaitlistWaveAnalysis(
+        uniEffectiveScore,
+        cutoffRange,
+        uni.waitlistRatio || 75
+      );
 
       return {
         id: uni.id,
@@ -625,6 +818,7 @@ function analyzeAdmission({ score, major, categoryOverride = null, englishGrade 
         probability,
         scoreDelta,
         effectiveScore: uniEffectiveScore,
+        waitlistWave,
         bucket: tier.bucket,
         tierLabel: tier.tierLabel,
         tierShort: tier.tierShort,
@@ -641,11 +835,8 @@ function analyzeAdmission({ score, major, categoryOverride = null, englishGrade 
   const targetList = evaluated.filter((u) => u.bucket === 'target');
   const reachList = evaluated.filter((u) => u.bucket === 'reach');
   const challengeList = evaluated.filter((u) => u.bucket === 'challenge');
-
-  // 지원 가능 대학 (안정 + 적정 + 소신)
   const supportableList = evaluated.filter((u) => u.bucket !== 'challenge');
 
-  // 핵심 추천 3개교 (소신 1, 적정 1, 안정 1 우선 선발)
   const pickClosest = (list, idealProb) => {
     if (list.length === 0) return null;
     return [...list].sort((a, b) => Math.abs(a.probability - idealProb) - Math.abs(b.probability - idealProb))[0];
@@ -657,10 +848,14 @@ function analyzeAdmission({ score, major, categoryOverride = null, englishGrade 
     reach: pickClosest(reachList, 32),
   };
 
-  // 가·나·다군 3장 최적 원서 조합 추천
   const recommendedPortfolios = buildRecommendedPortfolios(evaluated);
+  const strategyInsights = buildStrategyInsights(
+    evaluated,
+    scoreNum,
+    category,
+    safeEnglishGrade
+  );
 
-  // 전략 어드바이스 생성
   const strategyPoints = [];
   if (targetList.length > 0 && safetyList.length > 0) {
     strategyPoints.push(
@@ -722,6 +917,7 @@ function analyzeAdmission({ score, major, categoryOverride = null, englishGrade 
     challengeCount: challengeList.length,
     featured,
     recommendedPortfolios,
+    strategyInsights,
     strategyPoints,
     dataSources: DATA_SOURCES,
     universities: evaluated,
@@ -761,6 +957,8 @@ module.exports = {
   findMatchingDepartment,
   getAdjustedCutoffRange,
   analyzeSubjectProfile,
+  calcWaitlistWaveAnalysis,
+  buildStrategyInsights,
   calculateProbability,
   classifySupportTier,
   buildRecommendedPortfolios,

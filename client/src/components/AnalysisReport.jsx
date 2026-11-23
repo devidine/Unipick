@@ -21,6 +21,7 @@ import { useBookmarks } from '../contexts/bookmarks-context';
 import { APPLE_EASE, TIER_META } from '../utils/admission';
 import CutoffRangeChart from './CutoffRangeChart';
 import PortfolioSimulator from './PortfolioSimulator';
+import StrategyLab from './StrategyLab';
 import { AnimatedNumber, ScrollReveal } from './MotionPrimitives';
 import './AnalysisReport.css';
 
@@ -63,6 +64,7 @@ export default function AnalysisReport({
   onSaveSnapshot,
   onCopyShareLink,
   onCopyReportSummary,
+  onPivotMajor,
 }) {
   const {
     isBookmarked,
@@ -330,7 +332,10 @@ export default function AnalysisReport({
         </div>
       )}
 
-      {/* 2. Interactive 3-Slot Application Portfolio Simulator (가·나·다군 3장 배치) */}
+      {/* 2. UniPick Strategy Lab (학과 피벗 스캐너 · 추합 차수 생존 분석 · 목표 대학 역산 ROI) */}
+      <StrategyLab meta={meta} onPivotMajor={onPivotMajor} />
+
+      {/* 3. Interactive 3-Slot Application Portfolio Simulator (가·나·다군 3장 배치) */}
       <PortfolioSimulator meta={meta} />
 
       {/* 3. Direct University Eligibility Explorer */}
@@ -522,6 +527,11 @@ export default function AnalysisReport({
 
                         {/* Real-World Admission Metrics & Advantage Chips */}
                         <div className="uni-v-meta-chips num">
+                          {u.waitlistWave && (
+                            <span className={`uni-v-chip wave-chip-${u.waitlistWave.stage}`}>
+                              {u.waitlistWave.waveBadge}
+                            </span>
+                          )}
                           <span className="uni-v-chip">
                             경쟁률 {u.competitionRate ?? 5.0}:1
                           </span>

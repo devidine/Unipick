@@ -810,6 +810,21 @@
   color: var(--tier-reach);
 }
 
+.uni-v-chip.wave-chip-initial {
+  background-color: var(--tier-safety-bg);
+  color: var(--tier-safety);
+}
+
+.uni-v-chip.wave-chip-wave12 {
+  background-color: var(--tier-target-bg);
+  color: var(--tier-target);
+}
+
+.uni-v-chip.wave-chip-final_wave {
+  background-color: var(--tier-reach-bg);
+  color: var(--tier-reach);
+}
+
 /* Card Footer Actions */
 .uni-v-actions {
   display: flex;

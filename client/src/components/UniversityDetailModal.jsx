@@ -143,7 +143,9 @@ export default function UniversityDetailModal({ referenceScore = null, onAnalyze
 
                 <p className="detail-eval-basis">
                   <Info size={13} strokeWidth={1.8} />
-                  2025학년도 합격자 표준점수 평균({uni.cutoff}점) 대비 산출된 참고 지표이며, 실제 합격 여부는 대학별 환산점수·경쟁률에 따라 달라집니다.
+                  {uni.waitlistWave
+                    ? `${uni.waitlistWave.waveBadge} — ${uni.waitlistWave.stageSummary}`
+                    : `2025학년도 합격자 표준점수 평균(${uni.cutoff}점) 대비 산출된 참고 지표이며, 실제 합격 여부는 대학별 환산점수·경쟁률에 따라 달라집니다.`}
                 </p>
               </div>
             )}

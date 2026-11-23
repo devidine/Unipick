@@ -120,6 +120,22 @@ test('Analysis engine: department cutoff differentiation, university English pen
   const slotIds = new Set([bal.slots.가군.id, bal.slots.나군.id, bal.slots.다군.id]);
   assert.equal(slotIds.size, 3, '가·나·다군 추천 포트폴리오는 서로 다른 3개 대학이어야 함');
   assert.ok(bal.combinedProbability >= 50 && bal.combinedProbability <= 99);
+
+  // 5) 정시 전략 연구소(strategyInsights: 학과 피벗 스캐너 & 추합 차수 시뮬레이터) 검증
+  const pivotTest = analyzeAdmission({ score: 386, major: '반도체공학과', englishGrade: 2 });
+  assert.ok(pivotTest.meta.strategyInsights, 'strategyInsights 누락');
+  assert.ok(
+    pivotTest.meta.strategyInsights.departmentPivots.length > 0,
+    '반도체공학과 대비 동일 대학 내 피벗 전략 학과가 탐색되어야 함'
+  );
+  const firstPivot = pivotTest.meta.strategyInsights.departmentPivots[0];
+  assert.ok(firstPivot.toProbability > firstPivot.fromProbability);
+  assert.ok(firstPivot.cutoffSaved >= 1);
+
+  const cauItem = pivotTest.meta.universities.find((u) => u.id === 'cau');
+  assert.ok(cauItem.waitlistWave);
+  assert.ok(cauItem.waitlistWave.initialCutoff > cauItem.waitlistWave.finalCutoff);
+  assert.equal(cauItem.waitlistWave.waitlistRatio, 165);
 });
 
 test('API: health & universities endpoints', async () => {
