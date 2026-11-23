@@ -82,6 +82,46 @@ test('Analysis engine: probability is smooth, monotonic, and covers extreme scor
   assert.ok(eng3.meta.effectiveScore < eng1.meta.effectiveScore);
 });
 
+test('Analysis engine: department cutoff differentiation, university English penalties, subject weights & 3-slot portfolios', () => {
+  // 1) 동일 대학 내 의예과 vs 일반학과 세분화 합격선 보정 검증
+  const medAnalysis = analyzeAdmission({ score: 390, major: '의예과' });
+  const bizAnalysis = analyzeAdmission({ score: 390, major: '경영학과' });
+  const khuMed = medAnalysis.meta.universities.find((u) => u.id === 'khu');
+  const khuBiz = bizAnalysis.meta.universities.find((u) => u.id === 'khu');
+  assert.ok(khuMed && khuBiz);
+  assert.ok(
+    khuMed.cutoff >= khuBiz.cutoff + 20,
+    `경희대 의예과(${khuMed.cutoff})는 경영학과(${khuBiz.cutoff})보다 최소 20점 이상 높아야 함`
+  );
+
+  // 2) 대학별 실제 영어 등급 감점 차등 적용 검증 (서강대 vs 연세대 영어 2등급)
+  const eng2Res = analyzeAdmission({ score: 392, major: '경영학과', englishGrade: 2 });
+  const sogang = eng2Res.meta.universities.find((u) => u.id === 'sogang');
+  const yonsei = eng2Res.meta.universities.find((u) => u.id === 'yonsei');
+  assert.equal(sogang.englishPenalty, -0.5);
+  assert.equal(sogang.englishAdvantage, true);
+  assert.equal(yonsei.englishPenalty, -3.5);
+  assert.equal(yonsei.englishAdvantage, false);
+
+  // 3) 과목별 강점 진단 및 대학별 반영비율 유불리 검증 (수학 고득점자)
+  const mathStrongRes = analyzeAdmission({
+    score: 386,
+    major: '경영학과',
+    subjects: { kor: 120, math: 146, sub1: 60, sub2: 60 },
+  });
+  assert.equal(mathStrongRes.meta.subjectProfile.strengthType, '수학 강점형');
+  const sogangMath = mathStrongRes.meta.universities.find((u) => u.id === 'sogang');
+  assert.ok(sogangMath.weightDelta > 0, `수학 비중 43.3%인 서강대에서 양(+)의 유불리 점수가 산출되어야 함: ${sogangMath.weightDelta}`);
+
+  // 4) 가·나·다군 3장 최적 원서 조합(recommendedPortfolios) 중복 방지 및 합격 기대율 검증
+  const bal = mathStrongRes.meta.recommendedPortfolios.balanced;
+  assert.ok(bal);
+  assert.ok(bal.slots.가군 && bal.slots.나군 && bal.slots.다군);
+  const slotIds = new Set([bal.slots.가군.id, bal.slots.나군.id, bal.slots.다군.id]);
+  assert.equal(slotIds.size, 3, '가·나·다군 추천 포트폴리오는 서로 다른 3개 대학이어야 함');
+  assert.ok(bal.combinedProbability >= 50 && bal.combinedProbability <= 99);
+});
+
 test('API: health & universities endpoints', async () => {
   const healthRes = await fetch(`${baseUrl}/api/health`);
   assert.equal(healthRes.status, 200);
@@ -151,15 +191,56 @@ test('API: full auth, profile PUT, consultation save/list/detail/delete flow', a
   const meData = await meRes.json();
   assert.equal(meData.user.displayName, '김수험');
 
-  // PUT /api/profile 검증
+  // PUT /api/profile 확장 프로필(아바타·상태메시지·목표대학·목표학과·목표점수·주력계열) 검증
   const profRes = await fetch(`${baseUrl}/api/profile`, {
     method: 'PUT',
     headers: authHeaders,
-    body: JSON.stringify({ displayName: '김합격' }),
+    body: JSON.stringify({
+      displayName: '김합격',
+      avatar: 'emerald',
+      statusMessage: '2026 정시 연세대 합격 목표!',
+      targetScore: 398,
+      targetMajor: '인공지능학과',
+      targetUniversity: '연세대학교',
+      examTrack: '자연',
+    }),
   });
   assert.equal(profRes.status, 200);
   const profData = await profRes.json();
   assert.equal(profData.user.displayName, '김합격');
+  assert.equal(profData.user.avatar, 'emerald');
+  assert.equal(profData.user.statusMessage, '2026 정시 연세대 합격 목표!');
+  assert.equal(profData.user.targetScore, 398);
+  assert.equal(profData.user.targetMajor, '인공지능학과');
+  assert.equal(profData.user.targetUniversity, '연세대학교');
+  assert.equal(profData.user.examTrack, '자연');
+
+  // PUT /api/password 비밀번호 변경 검증
+  const pwFail = await fetch(`${baseUrl}/api/password`, {
+    method: 'PUT',
+    headers: authHeaders,
+    body: JSON.stringify({ currentPassword: 'wrong_password', newPassword: 'newpassword123' }),
+  });
+  assert.equal(pwFail.status, 401);
+
+  const pwOk = await fetch(`${baseUrl}/api/password`, {
+    method: 'PUT',
+    headers: authHeaders,
+    body: JSON.stringify({ currentPassword: 'password123', newPassword: 'newpassword123' }),
+  });
+  assert.equal(pwOk.status, 200);
+
+  // POST /api/demo-login 원클릭 체험 계정 로그인 검증
+  const demoRes = await fetch(`${baseUrl}/api/demo-login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({}),
+  });
+  assert.equal(demoRes.status, 200);
+  const demoData = await demoRes.json();
+  assert.equal(demoData.success, true);
+  assert.equal(demoData.user.username, 'demo_student');
+  assert.ok(demoData.token);
 
   // 로그인 상태 분석 저장
   const consultRes = await fetch(`${baseUrl}/api/consult`, {

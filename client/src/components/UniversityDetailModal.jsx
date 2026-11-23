@@ -167,8 +167,31 @@ export default function UniversityDetailModal({ referenceScore = null, onAnalyze
             {/* Key Admission Info */}
             <div className="detail-info-list">
               <div className="detail-info-row">
+                <span className="detail-info-key">2025 경쟁률 · 충원율</span>
+                <span className="detail-info-val num">
+                  평균 경쟁률 <strong>{uni.competitionRate ?? 5.0}:1</strong> · 예비번호 충원율 <strong>{uni.waitlistRatio ?? 75}%</strong>
+                </span>
+              </div>
+              {uni.weights && (
+                <div className="detail-info-row">
+                  <span className="detail-info-key">국·수·탐 반영비율</span>
+                  <span className="detail-info-val num">
+                    {uni.weights.인문
+                      ? `인문(국 ${uni.weights.인문.kor}% · 수 ${uni.weights.인문.math}% · 탐 ${uni.weights.인문.inq}%) / 자연(국 ${uni.weights.자연?.kor ?? uni.weights.인문.kor}% · 수 ${uni.weights.자연?.math ?? uni.weights.인문.math}% · 탐 ${uni.weights.자연?.inq ?? uni.weights.인문.inq}%)`
+                      : `국어 ${uni.weights.kor}% · 수학 ${uni.weights.math}% · 탐구 ${uni.weights.inq}%`}
+                  </span>
+                </div>
+              )}
+              <div className="detail-info-row">
                 <span className="detail-info-key">영어 반영</span>
-                <span className="detail-info-val">{uni.englishRule}</span>
+                <span className="detail-info-val">
+                  {uni.englishRule}
+                  {uni.englishPenalties && (
+                    <span className=" num" style={{ display: 'block', fontSize: 12, color: 'var(--ink-tertiary)', marginTop: 2 }}>
+                      등급별 환산 감점: 1등급 0점 · 2등급 {uni.englishPenalties[2]}점 · 3등급 {uni.englishPenalties[3]}점 · 4등급 {uni.englishPenalties[4]}점
+                    </span>
+                  )}
+                </span>
               </div>
               <div className="detail-info-row">
                 <span className="detail-info-key">입시 특징</span>

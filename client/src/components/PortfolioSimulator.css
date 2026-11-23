@@ -1,0 +1,477 @@
+/* PortfolioSimulator.css — 가·나·다군 3장 실전 원서 배치 시뮬레이터 */
+
+.portfolio-sim-card {
+  background: var(--bg-canvas);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-xl);
+  padding: 26px 28px;
+  box-shadow: var(--shadow-card);
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.portfolio-sim-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+
+.portfolio-sim-title-block {
+  flex: 1;
+  min-width: 280px;
+}
+
+.portfolio-sim-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--ink-secondary);
+  margin-bottom: 6px;
+}
+
+.portfolio-custom-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 9px;
+  border-radius: var(--radius-full);
+  background: var(--bg-inverse);
+  color: var(--ink-inverse);
+  font-size: 0.7rem;
+  font-weight: 600;
+}
+
+.portfolio-sim-title {
+  font-size: 1.25rem;
+  font-weight: 700;
+  letter-spacing: -0.025em;
+  color: var(--ink-primary);
+  margin-bottom: 5px;
+}
+
+.portfolio-sim-sub {
+  font-size: 0.86rem;
+  color: var(--ink-secondary);
+  line-height: 1.5;
+}
+
+/* Dark Space Black Combined Probability Box */
+.portfolio-combined-box {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 14px 20px;
+  border-radius: var(--radius-lg);
+  background: linear-gradient(145deg, #131317 0%, #1d1d23 100%);
+  color: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 10px 26px rgba(10, 10, 14, 0.14);
+}
+
+.portfolio-combined-main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.portfolio-combined-label {
+  font-size: 0.73rem;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.65);
+}
+
+.portfolio-combined-val {
+  font-size: 1.55rem;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  color: #ffffff;
+  line-height: 1.15;
+}
+
+.portfolio-combined-divider {
+  width: 1px;
+  height: 32px;
+  background: rgba(255, 255, 255, 0.14);
+}
+
+.portfolio-combined-risk {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.portfolio-combined-risk span {
+  font-size: 0.72rem;
+  color: rgba(255, 255, 255, 0.58);
+}
+
+.portfolio-combined-risk strong {
+  font-size: 1.05rem;
+  font-weight: 700;
+}
+
+.portfolio-combined-risk strong.safe {
+  color: #4ade80;
+}
+
+.portfolio-combined-risk strong.warn {
+  color: #fbbf24;
+}
+
+/* Toolbar & Strategy Presets */
+.portfolio-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding-bottom: 4px;
+}
+
+.portfolio-preset-tabs {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.portfolio-preset-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 14px;
+  border-radius: var(--radius-full);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  color: var(--ink-secondary);
+  font-size: 0.82rem;
+  font-weight: 600;
+  transition: all 0.2s var(--ease-apple);
+}
+
+.portfolio-preset-btn:hover {
+  background: var(--bg-surface-hover);
+  color: var(--ink-primary);
+}
+
+.portfolio-preset-btn.active {
+  background: var(--bg-inverse);
+  border-color: var(--bg-inverse);
+  color: var(--ink-inverse);
+  box-shadow: 0 4px 12px rgba(15, 15, 20, 0.15);
+}
+
+.preset-btn-sub {
+  font-size: 0.73rem;
+  font-weight: 500;
+  opacity: 0.72;
+}
+
+.portfolio-quick-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* 3 Slot Cards Grid */
+.portfolio-slots-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.portfolio-slot-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 14px;
+  transition:
+    transform 0.22s var(--ease-apple),
+    box-shadow 0.22s var(--ease-apple),
+    background-color 0.22s var(--ease-apple);
+}
+
+.portfolio-slot-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-card);
+  background: var(--bg-canvas);
+}
+
+.portfolio-slot-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.portfolio-slot-group-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--ink-primary);
+}
+
+.slot-group-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--bg-inverse);
+}
+
+.portfolio-slot-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.portfolio-slot-uni-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.portfolio-slot-uni {
+  font-size: 1.08rem;
+  font-weight: 700;
+  color: var(--ink-primary);
+  letter-spacing: -0.02em;
+  margin-bottom: 2px;
+}
+
+.portfolio-slot-dept {
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: var(--ink-secondary);
+}
+
+.portfolio-slot-prob {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  flex-shrink: 0;
+}
+
+.portfolio-slot-prob strong {
+  font-size: 1.25rem;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  line-height: 1.1;
+}
+
+.portfolio-slot-prob span {
+  font-size: 0.68rem;
+  color: var(--ink-tertiary);
+}
+
+.portfolio-slot-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-canvas);
+  border: 1px solid var(--border-subtle);
+}
+
+.slot-metric-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.slot-metric-item span {
+  font-size: 0.68rem;
+  color: var(--ink-tertiary);
+}
+
+.slot-metric-item strong {
+  font-size: 0.83rem;
+  font-weight: 700;
+  color: var(--ink-primary);
+}
+
+.slot-metric-item strong.pos {
+  color: var(--tier-safety);
+}
+
+.slot-metric-item strong.neg {
+  color: var(--tier-reach);
+}
+
+.portfolio-slot-tags {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.slot-micro-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 9px;
+  border-radius: var(--radius-full);
+  background: rgba(18, 18, 22, 0.06);
+  color: var(--ink-secondary);
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
+.slot-micro-tag.advantage {
+  background: var(--tier-safety-bg);
+  color: var(--tier-safety);
+}
+
+.slot-micro-tag.caution {
+  background: var(--tier-reach-bg);
+  color: var(--tier-reach);
+}
+
+.portfolio-slot-Controls {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.slot-select-label {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--ink-tertiary);
+}
+
+.slot-uni-select {
+  width: 100%;
+  padding: 8px 11px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-default);
+  background: var(--bg-canvas);
+  color: var(--ink-primary);
+  font-size: 0.79rem;
+  font-weight: 600;
+  cursor: pointer;
+  outline: none;
+  transition: border-color 0.18s ease;
+}
+
+.slot-uni-select:focus {
+  border-color: var(--bg-inverse);
+}
+
+.slot-action-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.slot-action-row .btn {
+  flex: 1;
+}
+
+/* Diagnosis Banner */
+.portfolio-diagnosis-bar {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px 18px;
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+}
+
+.portfolio-diagnosis-bar.tone-good {
+  background: var(--tier-safety-bg);
+  border-color: var(--tier-safety-border);
+}
+
+.portfolio-diagnosis-bar.tone-warn {
+  background: var(--tier-reach-bg);
+  border-color: var(--tier-reach-border);
+}
+
+.diagnosis-icon {
+  margin-top: 2px;
+  color: var(--ink-primary);
+  flex-shrink: 0;
+}
+
+.portfolio-diagnosis-bar.tone-good .diagnosis-icon {
+  color: var(--tier-safety);
+}
+
+.portfolio-diagnosis-bar.tone-warn .diagnosis-icon {
+  color: var(--tier-reach);
+}
+
+.diagnosis-content strong {
+  display: block;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--ink-primary);
+  margin-bottom: 2px;
+}
+
+.diagnosis-content p {
+  font-size: 0.81rem;
+  color: var(--ink-secondary);
+  line-height: 1.45;
+}
+
+@media (max-width: 960px) {
+  .portfolio-slots-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .portfolio-sim-card {
+    padding: 20px 16px;
+    border-radius: 22px;
+  }
+
+  .portfolio-combined-box {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .portfolio-preset-tabs {
+    width: 100%;
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    scrollbar-width: none;
+  }
+
+  .portfolio-preset-tabs::-webkit-scrollbar {
+    display: none;
+  }
+
+  .portfolio-preset-btn {
+    flex-shrink: 0;
+  }
+
+  .portfolio-quick-actions {
+    width: 100%;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .portfolio-quick-actions .btn {
+    width: 100%;
+  }
+
+  .slot-uni-select {
+    height: 42px;
+    font-size: 0.82rem;
+  }
+}

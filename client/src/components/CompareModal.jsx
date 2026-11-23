@@ -183,16 +183,26 @@ export default function CompareModal({ universities = [], evaluatedMap = {}, ref
                         </span>
                       </div>
 
-                      {/* Admission Type */}
+                      {/* Admission Type & Competition Metrics */}
                       <div className="compare-section">
-                        <span className="compare-label">전형 방식</span>
+                        <span className="compare-label">전형 방식 · 경쟁 지표</span>
                         <p className="compare-text">{item.admissionType}</p>
+                        <span className="compare-range-caption num" style={{ marginTop: 4, display: 'block' }}>
+                          2025 경쟁률 <strong>{item.competitionRate ?? 5.0}:1</strong> · 충원율 <strong>{item.waitlistRatio ?? 75}%</strong>
+                        </span>
                       </div>
 
                       {/* English Rule */}
                       <div className="compare-section">
-                        <span className="compare-label">영어 반영</span>
-                        <p className="compare-text">{item.englishRule}</p>
+                        <span className="compare-label">영어 반영 (2등급 감점)</span>
+                        <p className="compare-text">
+                          {item.englishRule}
+                          {item.englishPenalties && (
+                            <strong className="num" style={{ display: 'block', marginTop: 3 }}>
+                              2등급 {item.englishPenalties[2]}점 / 3등급 {item.englishPenalties[3]}점
+                            </strong>
+                          )}
+                        </p>
                       </div>
 
                       {/* Strategic Note */}

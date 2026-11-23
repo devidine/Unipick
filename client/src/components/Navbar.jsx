@@ -12,9 +12,19 @@ const NAV_ITEMS = [
   { id: 'history', label: '분석 내역', Icon: Clock },
 ];
 
+const AVATAR_COLOR_MAP = {
+  obsidian: '#111114',
+  graphite: '#3f3f46',
+  emerald: '#15803d',
+  cobalt: '#1d4ed8',
+  amber: '#b45309',
+};
+
 export default function Navbar({ activePage, onNavigate, onOpenAuth, onOpenAccount }) {
   const { user } = useAuth();
   const { bookmarks } = useBookmarks();
+
+  const avatarBg = user ? AVATAR_COLOR_MAP[user.avatar] || AVATAR_COLOR_MAP.obsidian : AVATAR_COLOR_MAP.obsidian;
 
   return (
     <>
@@ -66,12 +76,19 @@ export default function Navbar({ activePage, onNavigate, onOpenAuth, onOpenAccou
                 type="button"
                 className="account-trigger"
                 onClick={onOpenAccount}
-                aria-label="계정 설정 열기"
+                aria-label="내 입시 프로필 및 계정 설정 열기"
               >
-                <span className="account-initial" aria-hidden="true">
+                <span
+                  className="account-initial"
+                  style={{ backgroundColor: avatarBg }}
+                  aria-hidden="true"
+                >
                   {(user.displayName || user.username || 'U').slice(0, 1).toUpperCase()}
                 </span>
                 <span className="account-name">{user.displayName}</span>
+                {user.targetScore && (
+                  <span className="account-target-pill num">{user.targetScore}점 목표</span>
+                )}
               </button>
             ) : (
               <div className="guest-actions">
@@ -109,7 +126,7 @@ export default function Navbar({ activePage, onNavigate, onOpenAuth, onOpenAccou
               aria-current={isActive ? 'page' : undefined}
             >
               <span className="mobile-icon-wrap">
-                <Icon size={20} strokeWidth={isActive ? 2.1 : 1.65} aria-hidden="true" />
+                <Icon size={20} strokeWidth={isActive ? 2.2 : 1.7} aria-hidden="true" />
                 {badgeCount !== null && (
                   <span className="mobile-nav-dot num">{badgeCount}</span>
                 )}
@@ -120,13 +137,22 @@ export default function Navbar({ activePage, onNavigate, onOpenAuth, onOpenAccou
         })}
         <button
           type="button"
-          className="mobile-nav-item"
+          className={`mobile-nav-item ${user ? 'has-user' : ''}`}
           onClick={() => (user ? onOpenAccount() : onOpenAuth('login'))}
         >
           <span className="mobile-icon-wrap">
-            <User size={20} strokeWidth={1.65} aria-hidden="true" />
+            {user ? (
+              <span
+                className="mobile-user-avatar"
+                style={{ backgroundColor: avatarBg }}
+              >
+                {(user.displayName || user.username || 'U').slice(0, 1).toUpperCase()}
+              </span>
+            ) : (
+              <User size={20} strokeWidth={1.7} aria-hidden="true" />
+            )}
           </span>
-          <span>{user ? '계정' : '로그인'}</span>
+          <span>{user ? '내 프로필' : '로그인'}</span>
         </button>
       </nav>
     </>

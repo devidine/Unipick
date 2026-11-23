@@ -1,286 +1,388 @@
-import { useState, useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  AlertTriangle,
+  AlertCircle,
   Bookmark,
   Check,
   ChevronDown,
   ChevronRight,
+  Copy,
+  History,
   Info,
   RotateCcw,
   Scale,
   Search,
+  Share2,
+  SlidersHorizontal,
+  Sparkles,
   X,
 } from 'lucide-react';
 import { useBookmarks } from '../contexts/bookmarks-context';
 import { APPLE_EASE, TIER_META } from '../utils/admission';
-import { AnimatedNumber, ScrollReveal } from './MotionPrimitives';
 import CutoffRangeChart from './CutoffRangeChart';
+import PortfolioSimulator from './PortfolioSimulator';
+import { AnimatedNumber, ScrollReveal } from './MotionPrimitives';
 import './AnalysisReport.css';
 
-const FILTER_TABS = [
-  { id: 'all', label: '전체' },
-  { id: 'safety', label: '안정 지원' },
-  { id: 'target', label: '적정 지원' },
-  { id: 'reach', label: '소신 지원' },
-  { id: 'bookmarked', label: '관심 대학' },
+const TIER_FILTERS = [
+  { key: 'supportable', label: '지원 가능 전체' },
+  { key: 'safety', label: '안정 지원' },
+  { key: 'target', label: '적정 지원' },
+  { key: 'reach', label: '소신 지원' },
+  { key: 'all', label: '전체 21개교' },
 ];
 
 const GROUP_FILTERS = ['전체', '가군', '나군', '다군'];
-const SIM_OFFSETS = [-10, -5, 0, 5, 10];
+
+const SCORE_OFFSETS = [-10, -5, 0, +5, +10];
+
+const ADMISSION_GUIDES = [
+  {
+    id: 'conversion',
+    question: '표준점수 단순 합산과 대학별 환산점수는 어떻게 다른가요?',
+    summary: '영역별 반영비율(국·수·탐)과 탐구 변환표준점수가 당락을 좌우합니다.',
+    detail:
+      '수능 표준점수 총점이 같더라도 국어 강세 대학(성균관대·경희대 인문 등)과 수학 강세 대학(서강대·서울대·한양대 자연 등)에 따라 유불리가 최대 3~6점까지 벌어집니다. 과목별 점수 계산기에 국·수·탐 점수를 입력하면 대학별 반영비율 유불리를 자동으로 계산해 드립니다.',
+  },
+  {
+    id: 'group-strategy',
+    question: '가·나·다군 3장 원서 조합은 어떤 비율로 구성하는 것이 좋나요?',
+    summary: '안정 1장 · 적정 1장 · 소신 1장의 균형 배치가 표준 전략입니다.',
+    detail:
+      '정시 모집은 가·나·다군 각 1장씩 총 3번의 기회가 주어집니다. 다군(중앙대·성균관대·한양대·건국대·홍익대 등)은 상위권 중복 합격으로 예비번호 충원율이 90~165%로 높게 형성되므로, 상단의 가·나·다군 3장 원서 배치 시뮬레이터를 활용해 전년도 충원율까지 고려한 조합을 설계하세요.',
+  },
+];
 
 export default function AnalysisReport({
   report,
-  baseScore = null,
+  baseScore,
   simOffset = 0,
-  onSimulateOffset = null,
-  simLoading = false,
-  savedNotice = null,
+  onSimulateOffset,
+  simulating = false,
   isPreview = false,
-  layoutPrefix = 'report',
+  onSaveSnapshot,
+  onCopyShareLink,
+  onCopyReportSummary,
 }) {
-  const { isBookmarked, toggleBookmark, isComparing, toggleCompare, openDetail } = useBookmarks();
+  const {
+    isBookmarked,
+    toggleBookmark,
+    isComparing,
+    toggleCompare,
+    openDetail,
+  } = useBookmarks();
 
-  const [showAllChart, setShowAllChart] = useState(false);
-  const [tierFilter, setTierFilter] = useState('all');
+  const [tierFilter, setTierFilter] = useState('supportable');
   const [groupFilter, setGroupFilter] = useState('전체');
   const [searchQuery, setSearchQuery] = useState('');
   const [openGuideId, setOpenGuideId] = useState(null);
 
-  const { meta, assessment, medicalNotice, structured, allEvaluated, tips, guide, dataSources } =
-    report;
+  const meta = report?.meta;
 
-  // 커트라인 분포 차트 표시 항목
-  const chartItems = useMemo(() => {
-    if (showAllChart) return allEvaluated;
-    const picked = [...structured.reach, ...structured.target, ...structured.safety];
-    if (picked.length > 0) {
-      return [...picked].sort((a, b) => b.cutoff - a.cutoff);
-    }
-    return allEvaluated.slice(-7);
-  }, [showAllChart, structured, allEvaluated]);
-
-  // 검색 & 필터가 적용된 대학 카드 목록
   const filteredUniversities = useMemo(() => {
-    const q = searchQuery.trim().toLowerCase();
-    return allEvaluated.filter((u) => {
-      if (tierFilter === 'bookmarked' && !isBookmarked(u.id)) return false;
-      if (['safety', 'target', 'reach'].includes(tierFilter) && u.bucket !== tierFilter) {
-        return false;
+    const allUnis = meta?.universities || [];
+    return allUnis.filter((u) => {
+      if (tierFilter === 'supportable' && u.bucket === 'challenge') return false;
+      if (tierFilter === 'safety' && u.bucket !== 'safety') return false;
+      if (tierFilter === 'target' && u.bucket !== 'target') return false;
+      if (tierFilter === 'reach' && u.bucket !== 'reach') return false;
+
+      if (groupFilter !== '전체') {
+        const hasGroup = Array.isArray(u.groups)
+          ? u.groups.includes(groupFilter)
+          : String(u.group || '').includes(groupFilter.replace('군', ''));
+        if (!hasGroup) return false;
       }
-      if (groupFilter !== '전체' && !u.group.includes(groupFilter.replace('군', ''))) {
-        return false;
+
+      if (searchQuery.trim()) {
+        const kw = searchQuery.trim().toLowerCase();
+        const matchName =
+          u.university.toLowerCase().includes(kw) ||
+          u.shortName.toLowerCase().includes(kw) ||
+          (u.department && u.department.toLowerCase().includes(kw));
+        if (!matchName) return false;
       }
-      if (q) {
-        const hitName =
-          u.university.toLowerCase().includes(q) ||
-          (u.shortName || '').toLowerCase().includes(q) ||
-          u.department.toLowerCase().includes(q);
-        if (!hitName) return false;
-      }
+
       return true;
     });
-  }, [allEvaluated, tierFilter, groupFilter, searchQuery, isBookmarked]);
+  }, [meta?.universities, tierFilter, groupFilter, searchQuery]);
 
-  // 미니 위치 바용 스케일
-  const minAxis = 305;
+  if (!meta) return null;
+
+  // 미니 합격선 바 계산 (310 ~ 420)
+  const minAxis = 310;
   const maxAxis = 420;
   const toPct = (v) => Math.max(0, Math.min(100, ((v - minAxis) / (maxAxis - minAxis)) * 100));
 
   return (
-    <div className={`analysis-report ${simLoading ? 'is-simulating' : ''}`}>
-      {/* Preview Mode Notice (Honest & Clear) */}
+    <motion.div
+      className={`analysis-report ${simulating ? 'is-simulating' : ''}`}
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.35, ease: APPLE_EASE }}
+    >
+      {/* Preview Mode Banner */}
       {isPreview && (
         <div className="preview-banner">
-          <Info size={15} strokeWidth={1.9} />
+          <Sparkles size={15} strokeWidth={1.9} />
           <span>
-            현재 <strong>예시 성적({meta.score}점 · {meta.major})</strong> 기준의 2025학년도 공식 데이터 분석 미리보기입니다. 위 입력창에 본인 성적을 입력하면 즉시 맞춤형 결과로 전환됩니다.
+            <strong>실시간 입시 분석</strong> — 상단 성적이나 희망 학과를 변경하면 별도 버튼 클릭 없이도 지원 가능 대학과 3장 원서 포트폴리오가 즉시 재계산됩니다.
           </span>
         </div>
       )}
 
-      {/* 1. Space Black & Graphite Executive Summary Card */}
-      <motion.section
-        className="report-summary-card summary-obsidian"
-        aria-label="입시 분석 핵심 요약"
-        initial={{ opacity: 0, y: 12 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.35, ease: APPLE_EASE }}
-      >
-        {simLoading && <div className="summary-live-sweep" aria-hidden="true" />}
+      {/* 1. Space Black & Graphite Executive Summary Banner */}
+      <section className="report-summary-card">
+        {simulating && <div className="summary-live-sweep" aria-hidden="true" />}
         <div className="summary-top-row">
           <div>
             <div className="summary-eyebrow">
               <span>{meta.category}계열</span>
               <span className="dot">·</span>
-              <span>{meta.major}</span>
-              {meta.englishGrade > 1 && (
+              <span>희망 전공: {meta.major}</span>
+              <span className="dot">·</span>
+              <span>영어 {meta.englishGrade}등급</span>
+              {simOffset !== 0 && (
                 <>
                   <span className="dot">·</span>
-                  <span>영어 {meta.englishGrade}등급 보정 반영</span>
+                  <span className="sim-active-badge">
+                    점수 시뮬레이션 {simOffset > 0 ? `+${simOffset}` : simOffset}점 적용 중
+                  </span>
                 </>
               )}
             </div>
             <h2 className="summary-level">
-              {assessment.level}
-              <span className="summary-percentile">{assessment.percentileRange}</span>
+              {meta.level}
+              <span className="summary-percentile">({meta.percentileEstimate})</span>
             </h2>
           </div>
-          {savedNotice && (
+
+          <div className="summary-top-actions">
             <span className="summary-saved-pill">
-              <span className="live-dot" aria-hidden="true" />
-              {savedNotice}
+              <span className="live-dot" />
+              {report.saved ? '실시간 저장 완료' : '실시간 자동 분석'}
             </span>
-          )}
+            {onSaveSnapshot && (
+              <button
+                type="button"
+                className="summary-action-btn"
+                onClick={onSaveSnapshot}
+                title="현재 분석 조건과 결과를 분석 내역에 저장합니다"
+              >
+                <History size={13} strokeWidth={2} />
+                내역 저장
+              </button>
+            )}
+            {onCopyShareLink && (
+              <button
+                type="button"
+                className="summary-action-btn"
+                onClick={onCopyShareLink}
+                title="현재 성적·전공 조건이 담긴 공유 링크를 복사합니다"
+              >
+                <Share2 size={13} strokeWidth={2} />
+                링크 공유
+              </button>
+            )}
+            {onCopyReportSummary && (
+              <button
+                type="button"
+                className="summary-action-btn"
+                onClick={onCopyReportSummary}
+                title="분석 리포트 요약 텍스트를 클립보드에 복사합니다"
+              >
+                <Copy size={13} strokeWidth={2} />
+                요약 복사
+              </button>
+            )}
+          </div>
         </div>
 
-          <p className="summary-desc">{assessment.desc}</p>
+        <p className="summary-desc">
+          입력하신 표준점수 합 <strong>{meta.score}점</strong>을 기준으로 서울 주요 21개 대학의 학과별 세분화 합격선·영어 감점·영역별 반영비율을 분석한 결과, 총{' '}
+          <strong>{meta.supportableCount}개 대학</strong>이 지원 가능 구간(안정·적정·소신)에 해당합니다.
+        </p>
 
-          <div className="kpi-grid">
-            <div className="kpi-tile score-tile">
-              <span className="kpi-label">기준 표준점수</span>
-              <div className="kpi-value">
-                <AnimatedNumber value={meta.score} />
-                <small>점</small>
-              </div>
-              <span className="kpi-sub num">
-                {meta.englishPenalty < 0
-                  ? `영어 보정 후 ${meta.effectiveScore}점 (${meta.englishPenalty})`
-                  : '영어 1등급 기준 (감점 없음)'}
-              </span>
+        {/* Subject Balance Profile Strip (when 4-subject scores are provided) */}
+        {meta.subjectProfile && (
+          <div className="subject-profile-strip">
+            <div className="subject-profile-badge">
+              <SlidersHorizontal size={13} strokeWidth={2} />
+              <strong>{meta.subjectProfile.strengthType}</strong>
             </div>
+            <div className="subject-profile-scores num">
+              <span>국어 {meta.subjectProfile.kor}점 ({meta.subjectProfile.korPct}%)</span>
+              <span className="dot">·</span>
+              <span>수학 {meta.subjectProfile.math}점 ({meta.subjectProfile.mathPct}%)</span>
+              <span className="dot">·</span>
+              <span>탐구합 {meta.subjectProfile.inq}점 ({meta.subjectProfile.inqPct}%)</span>
+            </div>
+            <p className="subject-profile-summary">{meta.subjectProfile.summary}</p>
+          </div>
+        )}
 
-            <button
-              type="button"
-              className={`kpi-tile clickable ${tierFilter === 'safety' ? 'active-safety' : ''}`}
-              onClick={() => setTierFilter((prev) => (prev === 'safety' ? 'all' : 'safety'))}
-            >
-              <span className="kpi-label">안정 지원</span>
-              <div className="kpi-value tier-text-safety">
-                <AnimatedNumber value={meta.safetyCount} />
-                <small>개교</small>
-              </div>
-              <span className="kpi-sub">추정 적합도 75% 이상</span>
-            </button>
-
-            <button
-              type="button"
-              className={`kpi-tile clickable ${tierFilter === 'target' ? 'active-target' : ''}`}
-              onClick={() => setTierFilter((prev) => (prev === 'target' ? 'all' : 'target'))}
-            >
-              <span className="kpi-label">적정 지원</span>
-              <div className="kpi-value tier-text-target">
-                <AnimatedNumber value={meta.targetCount} />
-                <small>개교</small>
-              </div>
-              <span className="kpi-sub">추정 적합도 45–74%</span>
-            </button>
-
-            <button
-              type="button"
-              className={`kpi-tile clickable ${tierFilter === 'reach' ? 'active-reach' : ''}`}
-              onClick={() => setTierFilter((prev) => (prev === 'reach' ? 'all' : 'reach'))}
-            >
-              <span className="kpi-label">소신 지원</span>
-              <div className="kpi-value tier-text-reach">
-                <AnimatedNumber value={meta.reachCount} />
-                <small>개교</small>
-              </div>
-              <span className="kpi-sub">추정 적합도 15–44%</span>
-            </button>
+        {/* 4 Key KPI Tiles with Animated Count-Up Numbers */}
+        <div className="kpi-grid num">
+          <div className="kpi-tile score-tile">
+            <span className="kpi-label">내 표준점수 합</span>
+            <strong className="kpi-value">
+              <AnimatedNumber value={meta.score} />
+              <small>점</small>
+            </strong>
+            <span className="kpi-sub">
+              {meta.englishPenalty < 0
+                ? `영어 ${meta.englishGrade}등급 대학별 차등 감점 적용`
+                : '영어 1등급 감점 없음'}
+            </span>
           </div>
 
-          {/* Interactive Score Simulation Stepper */}
-          {onSimulateOffset && baseScore !== null && (
-            <div className="sim-bar">
-              <div className="sim-label-group">
-                <span className="sim-title">점수 변동 시뮬레이션</span>
-                <span className="sim-hint">
-                  표준점수가 ±5점, ±10점 변할 때 지원 가능 대학 구간의 변화를 바로 확인하세요.
-                </span>
-              </div>
-              <div className="sim-controls" role="group" aria-label="점수 오프셋 선택">
-                {SIM_OFFSETS.map((offset) => {
-                  const simulated = baseScore + offset;
-                  const disabled = simulated < 200 || simulated > 450;
-                  const active = simOffset === offset;
-                  return (
-                    <button
-                      key={offset}
-                      type="button"
-                      disabled={disabled}
-                      className={`sim-chip num ${active ? 'active' : ''}`}
-                      onClick={() => onSimulateOffset(offset)}
-                    >
-                      {offset === 0 ? `기준 ${baseScore}` : `${offset > 0 ? '+' : ''}${offset}점`}
-                    </button>
-                  );
-                })}
-                {simOffset !== 0 && (
-                  <button
-                    type="button"
-                    className="sim-reset-btn"
-                    onClick={() => onSimulateOffset(0)}
-                    aria-label="기준 점수로 복원"
-                  >
-                    <RotateCcw size={14} strokeWidth={2} />
-                  </button>
-                )}
-              </div>
-            </div>
-          )}
-        </motion.section>
+          <button
+            type="button"
+            className={`kpi-tile clickable ${tierFilter === 'safety' ? 'active-safety' : ''}`}
+            onClick={() => setTierFilter(tierFilter === 'safety' ? 'supportable' : 'safety')}
+          >
+            <span className="kpi-label">안정 지원</span>
+            <strong className="kpi-value tier-text-safety">
+              <AnimatedNumber value={meta.safetyCount} />
+              <small>개교</small>
+            </strong>
+            <span className="kpi-sub">추정 적합도 75% 이상</span>
+          </button>
 
-      {/* Medical Track Special Notice */}
-      {medicalNotice && (
-        <div className="notice-banner" role="note">
-          <AlertTriangle size={16} strokeWidth={1.8} className="notice-icon" />
-          <p>{medicalNotice}</p>
+          <button
+            type="button"
+            className={`kpi-tile clickable ${tierFilter === 'target' ? 'active-target' : ''}`}
+            onClick={() => setTierFilter(tierFilter === 'target' ? 'supportable' : 'target')}
+          >
+            <span className="kpi-label">적정 지원</span>
+            <strong className="kpi-value tier-text-target">
+              <AnimatedNumber value={meta.targetCount} />
+              <small>개교</small>
+            </strong>
+            <span className="kpi-sub">추정 적합도 45% – 74%</span>
+          </button>
+
+          <button
+            type="button"
+            className={`kpi-tile clickable ${tierFilter === 'reach' ? 'active-reach' : ''}`}
+            onClick={() => setTierFilter(tierFilter === 'reach' ? 'supportable' : 'reach')}
+          >
+            <span className="kpi-label">소신 지원</span>
+            <strong className="kpi-value tier-text-reach">
+              <AnimatedNumber value={meta.reachCount} />
+              <small>개교</small>
+            </strong>
+            <span className="kpi-sub">추정 적합도 15% – 44%</span>
+          </button>
+        </div>
+
+        {/* Score What-If Simulation Strip */}
+        {baseScore && onSimulateOffset && (
+          <div className="sim-bar">
+            <div className="sim-label-group">
+              <span className="sim-title">점수 변동 시뮬레이션</span>
+              <span className="sim-hint">
+                기준 {baseScore}점에서 점수 증감 시 지원 가능 대학 변화를 즉시 비교합니다
+              </span>
+            </div>
+            <div className="sim-controls num">
+              {SCORE_OFFSETS.map((offset) => {
+                const targetScore = baseScore + offset;
+                if (targetScore < 200 || targetScore > 450) return null;
+                const active = simOffset === offset;
+                return (
+                  <button
+                    key={offset}
+                    type="button"
+                    className={`sim-chip ${active ? 'active' : ''}`}
+                    disabled={simulating}
+                    onClick={() => onSimulateOffset(offset)}
+                  >
+                    {offset === 0 ? `기준 (${baseScore}점)` : `${offset > 0 ? `+${offset}` : offset}점`}
+                  </button>
+                );
+              })}
+              {simOffset !== 0 && (
+                <button
+                  type="button"
+                  className="sim-reset-btn"
+                  onClick={() => onSimulateOffset(0)}
+                  title="원래 점수로 복원"
+                >
+                  <RotateCcw size={13} strokeWidth={2} />
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+      </section>
+
+      {/* Special Notice if No Supportable Universities */}
+      {meta.supportableCount === 0 && (
+        <div className="notice-banner">
+          <AlertCircle size={18} strokeWidth={1.9} className="notice-icon" />
+          <div>
+            <strong>현재 점수대에서는 서울 주요 21개 대학이 모두 도전 구간(15% 미만)에 해당합니다.</strong>
+            <p>
+              아래 필터에서 <strong>전체 21개교</strong> 탭을 선택하면 각 대학과의 점수 격차를 확인할 수 있으며, 상단 점수 시뮬레이션 버튼(+5점, +10점)으로 목표 점수대를 탐색해 보세요.
+            </p>
+          </div>
         </div>
       )}
 
-      {/* 2. Interactive Visual Eligibility Board (Search, Filter, Bookmark, Compare) */}
-      <motion.section
-        className="eligibility-board"
-        aria-label="지원 가능 대학 목록 및 비교"
-        initial={{ opacity: 0, y: 12 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.38, delay: 0.05, ease: APPLE_EASE }}
-      >
+      {/* 2. Interactive 3-Slot Application Portfolio Simulator (가·나·다군 3장 배치) */}
+      <PortfolioSimulator meta={meta} />
+
+      {/* 3. Direct University Eligibility Explorer */}
+      <section className="eligibility-board" aria-label="대학별 지원 가능성 목록">
           <div className="board-header">
             <div>
-              <h3 className="board-title">지원 가능 대학 한눈에 보기</h3>
+              <h3 className="board-title">대학별 지원 가능성</h3>
               <p className="board-subtitle">
-                대학 카드를 눌러 학과·전형 상세 정보를 확인하거나, 최대 4개 대학을 선택해 나란히 비교해보세요.
+                학과별 보정 합격선·경쟁률·충원율·영어 감점 유불리를 한눈에 비교하고 관심 대학을 저장하세요
               </p>
             </div>
             <span className="board-count-pill num">
-              {filteredUniversities.length}개 대학 표시
+              표시 중 <strong>{filteredUniversities.length}</strong> / {meta.totalEvaluated}개교
             </span>
           </div>
 
-          {/* Rounded Filter & Search Toolbar */}
+          {/* Search & Filter Toolbar */}
           <div className="board-toolbar">
-            <div className="tier-pill-tabs" role="tablist" aria-label="지원 가능성 필터">
-              {FILTER_TABS.map((tab) => {
-                const isActive = tierFilter === tab.id;
+            <div className="tier-pill-tabs" role="tablist" aria-label="지원 가능성 구분 필터">
+              {TIER_FILTERS.map((f) => {
+                const count =
+                  f.key === 'supportable'
+                    ? meta.supportableCount
+                    : f.key === 'safety'
+                      ? meta.safetyCount
+                      : f.key === 'target'
+                        ? meta.targetCount
+                        : f.key === 'reach'
+                          ? meta.reachCount
+                          : meta.totalEvaluated;
+
+                const isActive = tierFilter === f.key;
+
                 return (
                   <button
-                    key={tab.id}
+                    key={f.key}
                     type="button"
                     role="tab"
                     aria-selected={isActive}
                     className={`tier-tab-btn ${isActive ? 'active' : ''}`}
-                    onClick={() => setTierFilter(tab.id)}
+                    onClick={() => setTierFilter(f.key)}
                   >
                     {isActive && (
                       <motion.span
-                        layoutId={`${layoutPrefix}-tier-pill`}
+                        layoutId="reportTierFilterPill"
                         className="tier-tab-pill-bg"
-                        transition={{ duration: 0.25, ease: APPLE_EASE }}
+                        transition={{ type: 'spring', stiffness: 420, damping: 34 }}
                       />
                     )}
-                    <span className="tier-tab-text">{tab.label}</span>
+                    <span className="tier-tab-text">
+                      {f.label} <span className="num">({count})</span>
+                    </span>
                   </button>
                 );
               })}
@@ -293,8 +395,8 @@ export default function AnalysisReport({
                   type="text"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="대학 또는 학과 검색"
-                  aria-label="결과 내 대학 또는 학과 검색"
+                  placeholder="대학명 또는 학과명 빠른 검색 (예: 성균관대, 반도체, 경영)"
+                  aria-label="지원 가능 대학 검색"
                 />
                 {searchQuery && (
                   <button
@@ -303,7 +405,7 @@ export default function AnalysisReport({
                     onClick={() => setSearchQuery('')}
                     aria-label="검색어 지우기"
                   >
-                    <X size={14} />
+                    <X size={13} strokeWidth={2} />
                   </button>
                 )}
               </div>
@@ -323,161 +425,156 @@ export default function AnalysisReport({
             </div>
           </div>
 
-          {/* Visual University Cards Grid */}
-          {filteredUniversities.length === 0 ? (
-            <div className="board-empty">
-              <p className="board-empty-title">선택한 조건에 해당하는 대학이 없습니다.</p>
-              <p className="board-empty-desc">
-                필터를 &lsquo;전체&rsquo;로 변경하거나 검색어를 비워 전체 서울권 대학을 확인해보세요.
-              </p>
-              <button
-                type="button"
-                className="btn btn-soft btn-sm"
-                onClick={() => {
-                  setTierFilter('all');
-                  setGroupFilter('전체');
-                  setSearchQuery('');
-                }}
-              >
-                필터 초기화
-              </button>
-            </div>
-          ) : (
-            <motion.div className="uni-visual-grid" layout>
+          {/* University Cards Grid */}
+          {filteredUniversities.length > 0 ? (
+            <motion.div layout className="uni-visual-grid">
               <AnimatePresence mode="popLayout">
-                {filteredUniversities.map((entry, idx) => {
-                  const tier = TIER_META[entry.bucket] || TIER_META.target;
-                  const bookmarked = isBookmarked(entry.id);
-                  const comparing = isComparing(entry.id);
-                  const deltaSign = entry.scoreDelta > 0 ? '+' : '';
+                {filteredUniversities.map((u, idx) => {
+                  const bookmarked = isBookmarked(u.id);
+                  const comparing = isComparing(u.id);
+                  const tierInfo = TIER_META[u.bucket] || TIER_META.challenge;
 
                   return (
                     <motion.article
-                      key={entry.id}
                       layout
-                      initial={{ opacity: 0, y: 12 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, scale: 0.97 }}
+                      key={u.id}
+                      initial={{ opacity: 0, y: 12, scale: 0.985 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      exit={{ opacity: 0, scale: 0.96 }}
                       transition={{
                         duration: 0.28,
                         delay: Math.min(idx * 0.025, 0.2),
                         ease: APPLE_EASE,
                       }}
                       whileHover={{ y: -3 }}
-                      className={`uni-v-card ${comparing ? 'is-comparing' : ''}`}
+                      className={`uni-v-card tier-card-${u.bucket} ${comparing ? 'is-comparing' : ''}`}
                     >
-                      {/* Clickable Main Info Area -> Opens Detail Sheet */}
                       <div
                         className="uni-v-body"
+                        onClick={() => openDetail(u)}
                         role="button"
                         tabIndex={0}
-                        onClick={() =>
-                          openDetail({ ...entry, effectiveScore: meta.effectiveScore })
-                        }
                         onKeyDown={(e) => {
                           if (e.key === 'Enter' || e.key === ' ') {
                             e.preventDefault();
-                            openDetail({ ...entry, effectiveScore: meta.effectiveScore });
+                            openDetail(u);
                           }
                         }}
                       >
                         <div className="uni-v-top">
                           <div className="uni-v-identity">
                             <div className="uni-v-badges">
-                              <span className={`tier-badge ${entry.bucket}`}>
+                              <span className={`tier-badge ${u.bucket}`}>
                                 <span className="tier-dot" />
-                                {tier.label}
+                                {tierInfo.label}
                               </span>
-                              <span className="uni-v-group">{entry.group}</span>
-                            </div>
-                            <h4 className="uni-v-name">{entry.university}</h4>
-                            <p className="uni-v-dept">
-                              {entry.department}
-                              {!entry.exactMatch && (
-                                <span className="uni-v-fallback">동일 계열 대표</span>
+                              <span className="uni-v-group">{u.group}</span>
+                              {u.deptAdjustment !== undefined && u.deptAdjustment !== 0 && (
+                                <span className="uni-v-dept-tier">
+                                  {u.deptTierLabel} ({u.deptAdjustment > 0 ? `+${u.deptAdjustment}` : u.deptAdjustment}점)
+                                </span>
                               )}
+                            </div>
+                            <h4 className="uni-v-name">{u.university}</h4>
+                            <p className="uni-v-dept">
+                              {u.department}
+                              {!u.isExactMatch && <span className="uni-v-fallback">유사 모집단위</span>}
                             </p>
                           </div>
 
                           <div className="uni-v-metric num">
-                            <span className={`uni-v-prob tier-text-${entry.bucket}`}>
-                              {entry.probability}%
-                            </span>
+                            <strong className={`uni-v-prob tier-text-${u.bucket}`}>
+                              <AnimatedNumber value={u.probability} suffix="%" />
+                            </strong>
                             <span className="uni-v-prob-sub">추정 적합도</span>
                           </div>
                         </div>
 
-                        {/* Visual Cutoff Position Gauge */}
+                        {/* Visual Cutoff Gauge */}
                         <div className="uni-v-gauge">
                           <div className="uni-v-track" aria-hidden="true">
                             <div
-                              className={`uni-v-band ${entry.bucket}`}
+                              className={`uni-v-band ${u.bucket}`}
                               style={{
-                                left: `${toPct(entry.cutoffRange.min)}%`,
-                                width: `${Math.max(
-                                  6,
-                                  toPct(entry.cutoffRange.max) - toPct(entry.cutoffRange.min)
-                                )}%`,
+                                left: `${toPct(u.cutoffRange.min)}%`,
+                                width: `${Math.max(5, toPct(u.cutoffRange.max) - toPct(u.cutoffRange.min))}%`,
                               }}
                             />
                             <div
-                              className={`uni-v-avg ${entry.bucket}`}
-                              style={{ left: `${toPct(entry.cutoffRange.avg)}%` }}
+                              className={`uni-v-avg ${u.bucket}`}
+                              style={{ left: `${toPct(u.cutoff)}%` }}
                             />
                             <div
                               className="uni-v-user-pin"
-                              style={{ left: `${toPct(meta.effectiveScore)}%` }}
+                              style={{ left: `${toPct(u.effectiveScore ?? meta.effectiveScore)}%` }}
                             />
                           </div>
                           <div className="uni-v-gauge-meta num">
                             <span>
-                              2025 평균 <strong>{entry.cutoff}점</strong> ({entry.cutoffRange.min}–
-                              {entry.cutoffRange.max})
+                              학과 기준 컷 <strong>{u.cutoff}점</strong> ({u.cutoffRange.min}–{u.cutoffRange.max})
                             </span>
-                            <span className={entry.scoreDelta >= 0 ? 'pos' : 'neg'}>
-                              평균 대비 {deltaSign}
-                              {entry.scoreDelta}점
+                            <span className={u.scoreDelta >= 0 ? 'pos' : 'neg'}>
+                              내 환산 {u.scoreDelta > 0 ? '+' : ''}
+                              {u.scoreDelta}점
                             </span>
                           </div>
                         </div>
 
-                        <p className="uni-v-admission">{entry.admissionType} · 영어 {entry.englishRule}</p>
+                        {/* Real-World Admission Metrics & Advantage Chips */}
+                        <div className="uni-v-meta-chips num">
+                          <span className="uni-v-chip">
+                            경쟁률 {u.competitionRate ?? 5.0}:1
+                          </span>
+                          <span className="uni-v-chip">
+                            충원율 {u.waitlistRatio ?? 75}%
+                          </span>
+                          {u.weights && (
+                            <span className="uni-v-chip">
+                              국{Math.round(u.weights.kor)}·수{Math.round(u.weights.math)}·탐{Math.round(u.weights.inq)}
+                            </span>
+                          )}
+                          {u.englishAdvantage && (
+                            <span className="uni-v-chip advantage">
+                              영어 감점 최소 ({u.englishPenalty}점)
+                            </span>
+                          )}
+                          {u.weightDelta !== undefined && Math.abs(u.weightDelta) >= 0.5 && (
+                            <span
+                              className={`uni-v-chip ${u.weightDelta > 0 ? 'advantage' : 'caution'}`}
+                            >
+                              {u.weightAdvantageLabel} ({u.weightDelta > 0 ? '+' : ''}
+                              {u.weightDelta}점)
+                            </span>
+                          )}
+                        </div>
                       </div>
 
-                      {/* Card Footer Action Bar */}
+                      {/* Card Footer Quick Actions */}
                       <div className="uni-v-actions">
                         <button
                           type="button"
                           className={`uni-v-act-btn ${bookmarked ? 'active-save' : ''}`}
-                          onClick={() =>
-                            toggleBookmark(entry.id, entry.department, entry.university)
-                          }
+                          onClick={() => toggleBookmark(u.id, u.department, u.university)}
                         >
-                          {bookmarked ? (
-                            <Check size={14} strokeWidth={2.2} />
-                          ) : (
-                            <Bookmark size={14} strokeWidth={1.8} />
-                          )}
-                          {bookmarked ? '저장됨' : '관심 저장'}
+                          {bookmarked ? <Check size={14} strokeWidth={2.2} /> : <Bookmark size={14} strokeWidth={1.8} />}
+                          <span>{bookmarked ? '저장됨' : '관심 저장'}</span>
                         </button>
 
                         <button
                           type="button"
                           className={`uni-v-act-btn ${comparing ? 'active-compare' : ''}`}
-                          onClick={() => toggleCompare(entry.id, entry.university)}
+                          onClick={() => toggleCompare(u.id, u.university)}
                         >
                           <Scale size={14} strokeWidth={1.8} />
-                          {comparing ? '비교 담김' : '비교 담기'}
+                          <span>{comparing ? '비교 중' : '비교 담기'}</span>
                         </button>
 
                         <button
                           type="button"
                           className="uni-v-detail-link"
-                          onClick={() =>
-                            openDetail({ ...entry, effectiveScore: meta.effectiveScore })
-                          }
+                          onClick={() => openDetail(u)}
                         >
-                          상세
+                          <span>입시 정보</span>
                           <ChevronRight size={14} strokeWidth={2} />
                         </button>
                       </div>
@@ -486,39 +583,54 @@ export default function AnalysisReport({
                 })}
               </AnimatePresence>
             </motion.div>
+          ) : (
+            <div className="board-empty">
+              <p className="board-empty-title">선택한 필터 조건에 해당하는 대학이 없습니다.</p>
+              <p className="board-empty-desc">
+                전체 21개교 탭으로 전환하거나 검색어 및 모집군 필터를 초기화해 보세요.
+              </p>
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                onClick={() => {
+                  setTierFilter('all');
+                  setGroupFilter('전체');
+                  setSearchQuery('');
+                }}
+              >
+                전체 21개 대학 보기
+              </button>
+            </div>
           )}
-      </motion.section>
+        </section>
 
-      {/* 3. Precision Cutoff Range Distribution Chart */}
-      <ScrollReveal delay={0.05}>
+      {/* 4. Cutoff Range Distribution Chart */}
+      <ScrollReveal delay={0.07}>
         <CutoffRangeChart
-          items={chartItems}
+          universities={meta.universities}
           userScore={meta.effectiveScore}
-          showAll={showAllChart}
-          onToggleShowAll={setShowAllChart}
-          totalCount={allEvaluated.length}
-          onSelectUniversity={(item) =>
-            openDetail({ ...item, effectiveScore: meta.effectiveScore })
-          }
+          onSelectUniversity={(u) => openDetail(u)}
         />
       </ScrollReveal>
 
-      {/* 4. Personalized Strategy Cards */}
-      {tips && tips.length > 0 && (
-        <ScrollReveal delay={0.05}>
-          <section className="strategy-section" aria-label="맞춤형 지원 전략">
+      {/* 5. Strategic Advice Section */}
+      {meta.strategyPoints && meta.strategyPoints.length > 0 && (
+        <ScrollReveal delay={0.09}>
+          <section className="strategy-section">
             <div className="section-heading-row">
-              <h3 className="section-heading">맞춤형 지원 전략</h3>
+              <h3 className="section-heading">맞춤 지원 전략 포인트</h3>
               <p className="section-subheading">
-                입력하신 계열과 점수대, 영어 등급을 종합해 확인해야 할 핵심 전략입니다.
+                현재 점수대와 희망 전공({meta.major})에서 우선 점검해야 할 정시 핵심 체크리스트입니다
               </p>
             </div>
             <div className="strategy-grid">
-              {tips.map((tip, idx) => (
-                <div key={idx} className="strategy-item">
-                  <span className="strategy-tag">{tip.tag}</span>
-                  <h4 className="strategy-item-title">{tip.title}</h4>
-                  <p className="strategy-item-body">{tip.body}</p>
+              {meta.strategyPoints.map((pt, i) => (
+                <div key={i} className="strategy-item">
+                  <span className="strategy-tag">Point 0{i + 1}</span>
+                  <h4 className="strategy-item-title">
+                    {i === 0 ? '모집군 포트폴리오 배분' : i === 1 ? '영어 등급 및 대학별 유불리' : '영역별 반영비율 최적화'}
+                  </h4>
+                  <p className="strategy-item-body">{pt}</p>
                 </div>
               ))}
             </div>
@@ -526,73 +638,55 @@ export default function AnalysisReport({
         </ScrollReveal>
       )}
 
-      {/* 5. Reference Guide Accordion */}
-      {guide && guide.length > 0 && (
-        <ScrollReveal delay={0.05}>
-          <section className="guide-section" aria-label="정시 지원 핵심 가이드">
-            <div className="section-heading-row">
-              <h3 className="section-heading">정시 지원 핵심 가이드</h3>
-              <p className="section-subheading">
-                원서 접수 전 반드시 점검해야 할 반영비율·영어 감점·모집군 배치 기준을 정리했습니다.
-              </p>
-            </div>
-
-            <div className="guide-accordion">
-              {guide.map((item) => {
-                const isOpen = openGuideId === item.id;
-                return (
-                  <div key={item.id} className={`guide-row ${isOpen ? 'open' : ''}`}>
-                    <button
-                      type="button"
-                      className="guide-trigger"
-                      aria-expanded={isOpen}
-                      onClick={() => setOpenGuideId(isOpen ? null : item.id)}
-                    >
-                      <div className="guide-trigger-text">
-                        <span className="guide-q">{item.title}</span>
-                        <span className="guide-summary">{item.summary}</span>
-                      </div>
-                      <ChevronDown
-                        size={17}
-                        strokeWidth={1.8}
-                        className={`guide-chevron ${isOpen ? 'rotated' : ''}`}
-                      />
-                    </button>
-                    <AnimatePresence initial={false}>
-                      {isOpen && (
-                        <motion.div
-                          initial={{ height: 0, opacity: 0 }}
-                          animate={{ height: 'auto', opacity: 1 }}
-                          exit={{ height: 0, opacity: 0 }}
-                          transition={{ duration: 0.24, ease: APPLE_EASE }}
-                          style={{ overflow: 'hidden' }}
-                        >
-                          <div className="guide-body">{item.content}</div>
-                        </motion.div>
-                      )}
-                    </AnimatePresence>
-                  </div>
-                );
-              })}
-            </div>
-          </section>
-        </ScrollReveal>
-      )}
-
-      {/* 6. Transparent Data Provenance */}
-      {dataSources && (
-        <footer className="provenance-card">
-          <div className="provenance-title">
-            <Info size={14} strokeWidth={1.9} />
-            <span>데이터 출처 및 추정치 산출 기준</span>
+      {/* 6. Essential Admissions FAQ Accordion */}
+      <ScrollReveal delay={0.1}>
+        <section className="guide-section">
+          <div className="section-heading-row">
+            <h3 className="section-heading">정시 지표 해석 가이드</h3>
           </div>
-          <p className="provenance-text">
-            {dataSources.primary} 및 {dataSources.secondary} ({dataSources.baseYear}학년도 정시 기준) 데이터를 바탕으로
-            입력하신 표준점수와 대학별 합격선 범위(최저–최고)의 상대적 위치를 계산한 참고 지표입니다.{' '}
-            {dataSources.note}
-          </p>
-        </footer>
-      )}
-    </div>
+          <div className="guide-accordion">
+            {ADMISSION_GUIDES.map((g) => {
+              const isOpen = openGuideId === g.id;
+              return (
+                <div key={g.id} className={`guide-row ${isOpen ? 'open' : ''}`}>
+                  <button
+                    type="button"
+                    className="guide-trigger"
+                    onClick={() => setOpenGuideId(isOpen ? null : g.id)}
+                    aria-expanded={isOpen}
+                  >
+                    <div className="guide-trigger-text">
+                      <span className="guide-q">{g.question}</span>
+                      <span className="guide-summary">{g.summary}</span>
+                    </div>
+                    <ChevronDown
+                      size={18}
+                      strokeWidth={1.8}
+                      className={`guide-chevron ${isOpen ? 'rotated' : ''}`}
+                    />
+                  </button>
+                  {isOpen && (
+                    <div className="guide-body">
+                      <p>{g.detail}</p>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      </ScrollReveal>
+
+      {/* 7. Data Provenance & Disclaimer */}
+      <footer className="provenance-card">
+        <div className="provenance-title">
+          <Info size={14} strokeWidth={1.9} />
+          <span>데이터 산출 기준 및 유의사항 ({meta.dataSources?.year || '2025학년도 정시모집'})</span>
+        </div>
+        <p className="provenance-text">
+          {meta.dataSources?.disclaimer}
+        </p>
+      </footer>
+    </motion.div>
   );
 }

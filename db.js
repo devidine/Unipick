@@ -9,15 +9,19 @@ const db = new Database(dbPath);
 db.pragma('journal_mode = WAL');
 db.pragma('foreign_keys = ON');
 
-// 기존 스키마 유지 + 관심 대학(saved_universities) 테이블 비파괴적 초기화
+// 기존 스키마 유지 + 관심 대학(saved_universities) 및 확장 프로필 컬럼 비파괴적 초기화
 db.exec(`
   CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     username TEXT UNIQUE NOT NULL,
     password_hash TEXT NOT NULL,
     display_name TEXT,
-    avatar TEXT DEFAULT '',
+    avatar TEXT DEFAULT 'obsidian',
     status_message TEXT DEFAULT '',
+    target_score INTEGER DEFAULT 385,
+    target_major TEXT DEFAULT '컴퓨터공학부',
+    target_university TEXT DEFAULT '성균관대학교',
+    exam_track TEXT DEFAULT '자연',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
 
@@ -47,17 +51,53 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_saved_universities_user ON saved_universities(user_id);
 `);
 
+// 기존 DB 파일에 신규 프로필 컬럼이 없을 경우 비파괴적 마이그레이션
+const extraUserColumns = [
+  "ALTER TABLE users ADD COLUMN avatar TEXT DEFAULT 'obsidian'",
+  "ALTER TABLE users ADD COLUMN status_message TEXT DEFAULT ''",
+  'ALTER TABLE users ADD COLUMN target_score INTEGER DEFAULT 385',
+  "ALTER TABLE users ADD COLUMN target_major TEXT DEFAULT '컴퓨터공학부'",
+  "ALTER TABLE users ADD COLUMN target_university TEXT DEFAULT '성균관대학교'",
+  "ALTER TABLE users ADD COLUMN exam_track TEXT DEFAULT '자연'",
+];
+
+for (const sql of extraUserColumns) {
+  try {
+    db.exec(sql);
+  } catch {
+    // 이미 존재하는 컬럼은 무시
+  }
+}
+
 const stmts = {
   // Users
   createUser: db.prepare(
-    'INSERT INTO users (username, password_hash, display_name) VALUES (?, ?, ?)'
+    `INSERT INTO users (
+      username, password_hash, display_name, avatar, status_message, target_score, target_major, target_university, exam_track
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
   ),
   findUserByUsername: db.prepare('SELECT * FROM users WHERE username = ?'),
   findUserById: db.prepare(
-    'SELECT id, username, display_name, created_at FROM users WHERE id = ?'
+    `SELECT id, username, display_name, avatar, status_message, target_score, target_major, target_university, exam_track, created_at
+     FROM users WHERE id = ?`
   ),
+  findUserWithPasswordById: db.prepare('SELECT * FROM users WHERE id = ?'),
   updateUserDisplayName: db.prepare(
     'UPDATE users SET display_name = ? WHERE id = ?'
+  ),
+  updateUserProfile: db.prepare(
+    `UPDATE users
+     SET display_name = ?,
+         avatar = ?,
+         status_message = ?,
+         target_score = ?,
+         target_major = ?,
+         target_university = ?,
+         exam_track = ?
+     WHERE id = ?`
+  ),
+  updateUserPassword: db.prepare(
+    'UPDATE users SET password_hash = ? WHERE id = ?'
   ),
 
   // Consultations

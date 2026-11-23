@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import { ChevronRight } from 'lucide-react';
 import { APPLE_EASE, TIER_META } from '../utils/admission';
@@ -6,14 +6,32 @@ import './CutoffRangeChart.css';
 
 export default function CutoffRangeChart({
   items,
-  userScore,
-  showAll,
+  universities,
+  userScore = 378,
+  showAll: controlledShowAll,
   onToggleShowAll,
-  totalCount,
+  totalCount: propTotalCount,
   onSelectUniversity = null,
 }) {
+  const [internalShowAll, setInternalShowAll] = useState(false);
+  const isControlled = typeof controlledShowAll === 'boolean' && typeof onToggleShowAll === 'function';
+  const showAll = isControlled ? controlledShowAll : internalShowAll;
+  const handleToggle = (val) => {
+    if (isControlled) onToggleShowAll(val);
+    else setInternalShowAll(val);
+  };
+
+  const fullList = useMemo(() => items || universities || [], [items, universities]);
+  const totalCount = propTotalCount ?? fullList.length;
+
+  const displayItems = useMemo(() => {
+    if (showAll) return fullList;
+    const supportable = fullList.filter((u) => u.bucket !== 'challenge');
+    return supportable.length >= 4 ? supportable : fullList.slice(0, 12);
+  }, [fullList, showAll]);
+
   const { minScale, maxScale, ticks } = useMemo(() => {
-    const scores = items.flatMap((u) => [u.cutoffRange.min, u.cutoffRange.max]);
+    const scores = displayItems.flatMap((u) => [u.cutoffRange.min, u.cutoffRange.max]);
     scores.push(userScore);
     const rawMin = Math.min(...scores, 310);
     const rawMax = Math.max(...scores, 412);
@@ -25,7 +43,7 @@ export default function CutoffRangeChart({
       tickList.push(v);
     }
     return { minScale: min, maxScale: max, ticks: tickList };
-  }, [items, userScore]);
+  }, [displayItems, userScore]);
 
   const toPct = (val) => {
     const clamped = Math.max(minScale, Math.min(maxScale, val));
@@ -33,6 +51,8 @@ export default function CutoffRangeChart({
   };
 
   const userPct = toPct(userScore);
+
+  if (displayItems.length === 0) return null;
 
   return (
     <section className="chart-card" aria-label="대학별 커트라인 분포와 내 점수 위치">
@@ -43,19 +63,19 @@ export default function CutoffRangeChart({
             2025학년도 대학별 합격선 범위(최저–최고) 안에서 내 기준 점수({userScore}점)의 위치를 비교합니다.
           </p>
         </div>
-        {(totalCount > items.length || showAll) && (
+        {(totalCount > displayItems.length || showAll) && (
           <div className="chart-toggle" role="group" aria-label="표시 대학 범위">
             <button
               type="button"
               className={`chart-toggle-btn ${!showAll ? 'active' : ''}`}
-              onClick={() => onToggleShowAll(false)}
+              onClick={() => handleToggle(false)}
             >
               핵심 구간
             </button>
             <button
               type="button"
               className={`chart-toggle-btn ${showAll ? 'active' : ''}`}
-              onClick={() => onToggleShowAll(true)}
+              onClick={() => handleToggle(true)}
             >
               전체 {totalCount}개교
             </button>
@@ -95,7 +115,7 @@ export default function CutoffRangeChart({
 
       {/* Rows */}
       <div className="chart-rows">
-        {items.map((item) => {
+        {displayItems.map((item) => {
           const leftPct = toPct(item.cutoffRange.min);
           const rightPct = toPct(item.cutoffRange.max);
           const widthPct = Math.max(2.5, rightPct - leftPct);

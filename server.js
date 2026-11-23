@@ -34,13 +34,23 @@ app.use(express.static(staticDir));
 // 유틸리티 & 인증 미들웨어
 // ═══════════════════════════════════════════════════════════════
 
+const VALID_AVATARS = ['obsidian', 'graphite', 'emerald', 'cobalt', 'amber'];
+
 function serializeUser(row, consultationCount = undefined) {
   if (!row) return null;
   const user = {
     id: row.id,
     username: row.username,
-    displayName: row.display_name || row.username,
-    createdAt: row.created_at || null,
+    displayName: row.display_name || row.displayName || row.username,
+    avatar: VALID_AVATARS.includes(row.avatar) ? row.avatar : 'obsidian',
+    statusMessage: row.status_message ?? row.statusMessage ?? '',
+    targetScore: Number(row.target_score ?? row.targetScore) || 385,
+    targetMajor: row.target_major || row.targetMajor || '컴퓨터공학부',
+    targetUniversity: row.target_university || row.targetUniversity || '성균관대학교',
+    examTrack: VALID_CATEGORIES.includes(row.exam_track || row.examTrack)
+      ? row.exam_track || row.examTrack
+      : '자연',
+    createdAt: row.created_at || row.createdAt || null,
   };
   if (typeof consultationCount === 'number') {
     user.consultationCount = consultationCount;
@@ -156,8 +166,26 @@ app.post('/api/register', (req, res) => {
   }
 
   const displayName = rawDisplayName || rawUsername;
+  const avatar = VALID_AVATARS.includes(req.body.avatar) ? req.body.avatar : 'obsidian';
+  const statusMessage = typeof req.body.statusMessage === 'string' ? req.body.statusMessage.trim().slice(0, 60) : '';
+  const rawTargetScore = Number(req.body.targetScore);
+  const targetScore = Number.isFinite(rawTargetScore) && rawTargetScore >= 200 && rawTargetScore <= 450 ? Math.round(rawTargetScore) : 385;
+  const targetMajor = typeof req.body.targetMajor === 'string' && req.body.targetMajor.trim() ? req.body.targetMajor.trim().slice(0, 40) : '컴퓨터공학부';
+  const targetUniversity = typeof req.body.targetUniversity === 'string' && req.body.targetUniversity.trim() ? req.body.targetUniversity.trim().slice(0, 40) : '성균관대학교';
+  const examTrack = VALID_CATEGORIES.includes(req.body.examTrack) ? req.body.examTrack : '자연';
+
   const hash = bcrypt.hashSync(password, 10);
-  const result = stmts.createUser.run(rawUsername, hash, displayName);
+  const result = stmts.createUser.run(
+    rawUsername,
+    hash,
+    displayName,
+    avatar,
+    statusMessage,
+    targetScore,
+    targetMajor,
+    targetUniversity,
+    examTrack
+  );
   const createdUser = stmts.findUserById.get(result.lastInsertRowid);
   const token = jwt.sign({ userId: createdUser.id }, JWT_SECRET, { expiresIn: '30d' });
 
@@ -165,6 +193,34 @@ app.post('/api/register', (req, res) => {
     success: true,
     token,
     user: serializeUser(createdUser, 0),
+  });
+});
+
+// 원클릭 체험 계정 로그인
+app.post('/api/demo-login', (req, res) => {
+  const demoUsername = 'demo_student';
+  let user = stmts.findUserByUsername.get(demoUsername);
+  if (!user) {
+    const hash = bcrypt.hashSync('unipick2026', 10);
+    const result = stmts.createUser.run(
+      demoUsername,
+      hash,
+      '김유니 (수험생 체험)',
+      'obsidian',
+      '2026 정시 컴퓨터공학부 목표 달성!',
+      388,
+      '컴퓨터공학부',
+      '성균관대학교',
+      '자연'
+    );
+    user = stmts.findUserById.get(result.lastInsertRowid);
+  }
+  const countRow = stmts.countConsultationsByUser.get(user.id);
+  const token = jwt.sign({ userId: user.id }, JWT_SECRET, { expiresIn: '30d' });
+  res.json({
+    success: true,
+    token,
+    user: serializeUser(user, countRow ? countRow.count : 0),
   });
 });
 
@@ -204,6 +260,11 @@ app.get('/api/me', authMiddleware, (req, res) => {
 });
 
 app.put('/api/profile', authMiddleware, (req, res) => {
+  const current = stmts.findUserById.get(req.userId);
+  if (!current) {
+    return res.status(404).json({ success: false, error: '사용자를 찾을 수 없습니다.' });
+  }
+
   const rawName = req.body.displayName ?? req.body.display_name;
   const displayName = typeof rawName === 'string' ? rawName.trim() : '';
 
@@ -211,8 +272,41 @@ app.put('/api/profile', authMiddleware, (req, res) => {
     return res.status(400).json({ success: false, error: '표시 이름은 1~30자로 입력해주세요.' });
   }
 
+  const avatar = VALID_AVATARS.includes(req.body.avatar)
+    ? req.body.avatar
+    : current.avatar || 'obsidian';
+  const statusMessage =
+    req.body.statusMessage !== undefined
+      ? String(req.body.statusMessage || '').trim().slice(0, 60)
+      : current.status_message || '';
+  const rawScore = req.body.targetScore !== undefined ? Number(req.body.targetScore) : current.target_score;
+  const targetScore =
+    Number.isFinite(rawScore) && rawScore >= 200 && rawScore <= 450
+      ? Math.round(rawScore)
+      : current.target_score || 385;
+  const targetMajor =
+    typeof req.body.targetMajor === 'string' && req.body.targetMajor.trim()
+      ? req.body.targetMajor.trim().slice(0, 40)
+      : current.target_major || '컴퓨터공학부';
+  const targetUniversity =
+    typeof req.body.targetUniversity === 'string' && req.body.targetUniversity.trim()
+      ? req.body.targetUniversity.trim().slice(0, 40)
+      : current.target_university || '성균관대학교';
+  const examTrack = VALID_CATEGORIES.includes(req.body.examTrack)
+    ? req.body.examTrack
+    : current.exam_track || '자연';
+
   try {
-    stmts.updateUserDisplayName.run(displayName, req.userId);
+    stmts.updateUserProfile.run(
+      displayName,
+      avatar,
+      statusMessage,
+      targetScore,
+      targetMajor,
+      targetUniversity,
+      examTrack,
+      req.userId
+    );
     const updated = stmts.findUserById.get(req.userId);
     const countRow = stmts.countConsultationsByUser.get(req.userId);
     res.json({ success: true, user: serializeUser(updated, countRow ? countRow.count : 0) });
@@ -222,12 +316,33 @@ app.put('/api/profile', authMiddleware, (req, res) => {
   }
 });
 
+app.put('/api/password', authMiddleware, (req, res) => {
+  const currentPassword = typeof req.body.currentPassword === 'string' ? req.body.currentPassword : '';
+  const newPassword = typeof req.body.newPassword === 'string' ? req.body.newPassword : '';
+
+  if (!currentPassword || !newPassword) {
+    return res.status(400).json({ success: false, error: '현재 비밀번호와 새 비밀번호를 모두 입력해주세요.' });
+  }
+  if (newPassword.length < 4 || newPassword.length > 72) {
+    return res.status(400).json({ success: false, error: '새 비밀번호는 4자 이상 72자 이하로 입력해주세요.' });
+  }
+
+  const user = stmts.findUserWithPasswordById.get(req.userId);
+  if (!user || !bcrypt.compareSync(currentPassword, user.password_hash)) {
+    return res.status(401).json({ success: false, error: '현재 비밀번호가 일치하지 않습니다.' });
+  }
+
+  const newHash = bcrypt.hashSync(newPassword, 10);
+  stmts.updateUserPassword.run(newHash, req.userId);
+  res.json({ success: true });
+});
+
 // ═══════════════════════════════════════════════════════════════
 // 입시 성적 분석 API (비로그인 즉시 체험 + 로그인 시 자동 저장)
 // ═══════════════════════════════════════════════════════════════
 
 app.post('/api/consult', optionalAuth, (req, res) => {
-  const { score, major, category, englishGrade, save = true } = req.body || {};
+  const { score, major, category, englishGrade, subjects = null, save = true } = req.body || {};
 
   const scoreStr = String(score ?? '').trim();
   if (!scoreStr || !/^\d+(\.\d+)?$/.test(scoreStr)) {
@@ -264,6 +379,7 @@ app.post('/api/consult', optionalAuth, (req, res) => {
     major: cleanMajor,
     categoryOverride,
     englishGrade: safeEnglishGrade,
+    subjects: subjects && typeof subjects === 'object' ? subjects : null,
   });
 
   let consultationId = null;
@@ -337,6 +453,7 @@ app.get('/api/consultations/:id', authMiddleware, (req, res) => {
     major: row.major,
     categoryOverride: VALID_CATEGORIES.includes(row.category) ? row.category : null,
     englishGrade: savedMeta.englishGrade || 1,
+    subjects: savedMeta.subjectProfile || null,
   });
 
   res.json({

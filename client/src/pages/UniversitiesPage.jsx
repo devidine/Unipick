@@ -1,330 +1,455 @@
-import { useState, useMemo } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import {
-  ArrowUpDown,
-  Bookmark,
-  Check,
-  ChevronRight,
-  Scale,
-  Search,
-  SlidersHorizontal,
-  X,
-} from 'lucide-react';
+import { useState, useEffect, useMemo } from 'react';
+import { motion } from 'framer-motion';
+import { ArrowUpDown, Bookmark, Check, ChevronRight, Scale, Search, X } from 'lucide-react';
+import { universityApi } from '../utils/api';
 import { useBookmarks } from '../contexts/bookmarks-context';
 import { APPLE_EASE, TIER_META, calcLocalEvaluation } from '../utils/admission';
 import './UniversitiesPage.css';
 
-const CATEGORY_TABS = ['전체', '인문', '자연', '예체능'];
-const SORT_OPTIONS = [
-  { id: 'cutoff_desc', label: '커트라인 높은순' },
-  { id: 'cutoff_asc', label: '낮은순' },
-  { id: 'name_asc', label: '가나다순' },
+const TRACK_TABS = [
+  { id: 'all', label: '전체 계열' },
+  { id: '인문', label: '인문계열' },
+  { id: '자연', label: '자연계열' },
+  { id: '예체능', label: '예체능계열' },
 ];
 
-export default function UniversitiesPage({
-  universities = [],
-  loading = false,
-  referenceScore = null,
-}) {
-  const { isBookmarked, toggleBookmark, isComparing, toggleCompare, openDetail } = useBookmarks();
+const GROUP_TABS = ['전체 군', '가군', '나군', '다군'];
 
-  const [query, setQuery] = useState('');
-  const [category, setCategory] = useState('전체');
-  const [sortBy, setSortBy] = useState('cutoff_desc');
-  const [compareScore, setCompareScore] = useState(() =>
-    referenceScore ? String(referenceScore) : ''
-  );
+const TIER_TABS = [
+  { id: 'all', label: '전체 판정' },
+  { id: 'safety', label: '안정 지원' },
+  { id: 'target', label: '적정 지원' },
+  { id: 'reach', label: '소신 지원' },
+];
 
-  const parsedCompareScore = useMemo(() => {
-    if (!compareScore.trim()) return null;
-    const n = Number(compareScore);
-    return Number.isFinite(n) && n >= 200 && n <= 450 ? Number(n.toFixed(1)) : null;
-  }, [compareScore]);
+const SORT_OPTIONS = [
+  { id: 'cutoff-desc', label: '합격선 높은 순' },
+  { id: 'cutoff-asc', label: '합격선 낮은 순' },
+  { id: 'waitlist-desc', label: '충원율 높은 순' },
+  { id: 'name-asc', label: '대학명 가나다순' },
+];
 
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    const list = universities.filter((u) => {
-      if (category !== '전체' && (!u.departments[category] || u.departments[category].length === 0)) {
-        return false;
-      }
-      if (!q) return true;
-      if (u.university.toLowerCase().includes(q) || u.shortName.toLowerCase().includes(q)) {
+export default function UniversitiesPage({ referenceScore = null, onReferenceScoreChange }) {
+  const {
+    isBookmarked,
+    toggleBookmark,
+    isComparing,
+    toggleCompare,
+    openDetail,
+  } = useBookmarks();
+
+  const [universities, setUniversities] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [trackFilter, setTrackFilter] = useState('all');
+  const [groupFilter, setGroupFilter] = useState('전체 군');
+  const [tierFilter, setTierFilter] = useState('all');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [sortBy, setSortBy] = useState('cutoff-desc');
+  const [customScore, setCustomScore] = useState(null);
+
+  const localScore = customScore !== null ? customScore : referenceScore ? String(referenceScore) : '';
+
+  useEffect(() => {
+    let active = true;
+    universityApi
+      .list()
+      .then((data) => {
+        if (active && data?.success) {
+          setUniversities(data.universities || []);
+        }
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const parsedScore = useMemo(() => {
+    const n = Math.round(Number(localScore));
+    return Number.isFinite(n) && n >= 200 && n <= 450 ? n : null;
+  }, [localScore]);
+
+  const filteredList = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+
+    const filtered = universities
+      .map((u) => {
+        const evalData = parsedScore ? calcLocalEvaluation(parsedScore, u.cutoffRange) : null;
+        return { ...u, evalData };
+      })
+      .filter((u) => {
+        if (trackFilter !== 'all') {
+          const depts = u.departments?.[trackFilter] || [];
+          if (depts.length === 0) return false;
+        }
+
+        if (groupFilter !== '전체 군') {
+          const hasGroup = Array.isArray(u.groups)
+            ? u.groups.includes(groupFilter)
+            : String(u.group || '').includes(groupFilter.replace('군', ''));
+          if (!hasGroup) return false;
+        }
+
+        if (tierFilter !== 'all' && parsedScore && u.evalData) {
+          if (u.evalData.bucket !== tierFilter) return false;
+        }
+
+        if (q) {
+          const nameMatch =
+            u.university.toLowerCase().includes(q) ||
+            (u.shortName && u.shortName.toLowerCase().includes(q));
+          const deptMatch = Object.values(u.departments || {}).some((arr) =>
+            arr.some((d) => d.toLowerCase().includes(q))
+          );
+          if (!nameMatch && !deptMatch) return false;
+        }
         return true;
-      }
-      return Object.values(u.departments).some((depts) =>
-        depts.some((d) => d.toLowerCase().includes(q))
-      );
-    });
+      });
 
-    return [...list].sort((a, b) => {
-      if (sortBy === 'cutoff_asc') return a.cutoff - b.cutoff;
-      if (sortBy === 'name_asc') return a.university.localeCompare(b.university, 'ko');
+    return [...filtered].sort((a, b) => {
+      if (sortBy === 'cutoff-asc') return a.cutoff - b.cutoff;
+      if (sortBy === 'waitlist-desc') return (b.waitlistRatio || 0) - (a.waitlistRatio || 0);
+      if (sortBy === 'name-asc') return a.university.localeCompare(b.university, 'ko');
       return b.cutoff - a.cutoff;
     });
-  }, [universities, query, category, sortBy]);
+  }, [universities, trackFilter, groupFilter, tierFilter, searchQuery, sortBy, parsedScore]);
 
-  const minAxis = 305;
-  const maxAxis = 420;
+  const minAxis = 310;
+  const maxAxis = 415;
   const toPct = (v) => Math.max(0, Math.min(100, ((v - minAxis) / (maxAxis - minAxis)) * 100));
 
   return (
     <div className="universities-page">
       <div className="page-container uni-layout">
-        <header className="uni-page-header">
-          <h1 className="uni-page-title">서울권 21개 대학 탐색</h1>
+        {/* Page Header */}
+        <motion.header
+          className="uni-page-header"
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.36, ease: APPLE_EASE }}
+        >
+          <span className="page-eyebrow">2025학년도 서울 주요 21개 대학 정시 기준</span>
+          <h1 className="uni-page-title">대학 및 모집단위 탐색</h1>
           <p className="uni-page-desc">
-            대학별 2025학년도 정시 합격선과 개설 학과, 전형 조건을 시각적으로 비교하고 관심 대학을 저장하세요.
+            합격자 표준점수 분포, 모집군, 전년도 경쟁률·충원율, 국·수·탐 반영비율 및 주요 개설 학과를 비교해 보세요.
           </p>
-        </header>
+        </motion.header>
 
-        {/* Rounded Filter & Score Comparison Toolbar */}
-        <div className="uni-toolbar">
+        {/* Rounded Frosted Toolbar */}
+        <section className="uni-toolbar" aria-label="대학 검색 및 필터">
           <div className="toolbar-search">
             <Search size={16} strokeWidth={1.8} className="search-icon" />
             <input
               type="text"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="대학명 또는 학과명 검색 (예: 서울대, 컴퓨터)"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="대학명 또는 학과명 검색 (예: 성균관대, 반도체, 경영, 의예과)"
               aria-label="대학 또는 학과 검색"
             />
-            {query && (
+            {searchQuery && (
               <button
                 type="button"
                 className="clear-icon-btn"
-                onClick={() => setQuery('')}
+                onClick={() => setSearchQuery('')}
                 aria-label="검색어 지우기"
               >
-                <X size={14} />
+                <X size={14} strokeWidth={2} />
               </button>
             )}
           </div>
 
           <div className="toolbar-controls">
+            {/* Track Tabs */}
             <div className="toolbar-pills" role="tablist" aria-label="계열 필터">
-              {CATEGORY_TABS.map((cat) => {
-                const isActive = category === cat;
+              {TRACK_TABS.map((t) => {
+                const isActive = trackFilter === t.id;
                 return (
                   <button
-                    key={cat}
+                    key={t.id}
                     type="button"
                     role="tab"
                     aria-selected={isActive}
                     className={`toolbar-pill ${isActive ? 'active' : ''}`}
-                    onClick={() => setCategory(cat)}
+                    onClick={() => setTrackFilter(t.id)}
                   >
                     {isActive && (
                       <motion.span
-                        layoutId="uni-cat-pill"
+                        layoutId="uniExplorerTrackPill"
                         className="toolbar-pill-bg"
-                        transition={{ duration: 0.24, ease: APPLE_EASE }}
+                        transition={{ type: 'spring', stiffness: 420, damping: 34 }}
                       />
                     )}
-                    <span className="toolbar-pill-text">{cat}</span>
+                    <span className="toolbar-pill-text">{t.label}</span>
                   </button>
                 );
               })}
             </div>
 
+            {/* Recruitment Group Tabs (가군 / 나군 / 다군) */}
+            <div className="toolbar-pills" role="group" aria-label="모집군 필터">
+              {GROUP_TABS.map((g) => (
+                <button
+                  key={g}
+                  type="button"
+                  className={`toolbar-pill ${groupFilter === g ? 'active' : ''}`}
+                  onClick={() => setGroupFilter(g)}
+                >
+                  <span className="toolbar-pill-text">{g}</span>
+                </button>
+              ))}
+            </div>
+
+            {/* Optional Quick Score Comparison Input */}
             <div className="compare-score-input">
-              <SlidersHorizontal size={13} strokeWidth={1.9} />
-              <label htmlFor="uni-compare-score">내 점수 비교</label>
+              <label htmlFor="explorer-score">내 점수 대조</label>
               <input
-                id="uni-compare-score"
+                id="explorer-score"
                 type="number"
                 min={200}
                 max={450}
-                placeholder="예: 378"
-                value={compareScore}
-                onChange={(e) => setCompareScore(e.target.value)}
+                value={localScore}
+                onChange={(e) => {
+                  setCustomScore(e.target.value);
+                  const n = Math.round(Number(e.target.value));
+                  if (Number.isFinite(n) && n >= 200 && n <= 450 && onReferenceScoreChange) {
+                    onReferenceScoreChange(n);
+                  }
+                }}
+                placeholder="385"
                 className="num"
               />
             </div>
 
-            <div className="toolbar-sort" role="group" aria-label="정렬 기준">
-              <ArrowUpDown size={13} strokeWidth={1.8} className="sort-icon" aria-hidden="true" />
-              {SORT_OPTIONS.map((opt) => (
+            {/* Sort Options */}
+            <div className="toolbar-sort">
+              <ArrowUpDown size={13} strokeWidth={1.8} className="sort-icon" />
+              {SORT_OPTIONS.map((s) => (
                 <button
-                  key={opt.id}
+                  key={s.id}
                   type="button"
-                  className={`sort-pill ${sortBy === opt.id ? 'active' : ''}`}
-                  onClick={() => setSortBy(opt.id)}
+                  className={`sort-pill ${sortBy === s.id ? 'active' : ''}`}
+                  onClick={() => setSortBy(s.id)}
                 >
-                  {opt.label}
+                  {s.label}
                 </button>
               ))}
             </div>
           </div>
-        </div>
 
-        {/* Count Meta */}
-        <div className="uni-meta-line">
-          <span className="num">총 {filtered.length}개 대학</span>
-          {parsedCompareScore && (
-            <span className="compare-active-note num">
-              기준 점수 <strong>{parsedCompareScore}점</strong> 대비 추정 지원 구간 표시 중
+          {/* Support Tier Filter Row (when score is available) */}
+          {parsedScore && (
+            <div className="toolbar-tier-row">
+              <span className="toolbar-tier-label num">내 점수({parsedScore}점) 기준 판정 필터:</span>
+              <div className="toolbar-tier-pills">
+                {TIER_TABS.map((tb) => (
+                  <button
+                    key={tb.id}
+                    type="button"
+                    className={`tier-filter-chip ${tierFilter === tb.id ? 'active' : ''}`}
+                    onClick={() => setTierFilter(tb.id)}
+                  >
+                    {tb.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </section>
+
+        <div className="uni-meta-line num">
+          <span>
+            총 <strong>{filteredList.length}</strong>개 대학 표시 중
+          </span>
+          {parsedScore && (
+            <span className="compare-active-note">
+              내 기준 점수 <strong>{parsedScore}점</strong> 대비 지원 가능성 배지가 함께 표시됩니다
             </span>
           )}
         </div>
 
-        {/* Visual University Card Grid */}
+        {/* Universities Cards Grid */}
         {loading ? (
           <div className="uni-explorer-grid">
-            {[1, 2, 3, 4, 5, 6].map((i) => (
-              <div key={i} className="skeleton uni-skeleton-card" />
+            {[1, 2, 3, 4, 5, 6].map((n) => (
+              <div key={n} className="skeleton uni-skeleton-card" />
             ))}
           </div>
-        ) : filtered.length === 0 ? (
+        ) : filteredList.length === 0 ? (
           <div className="uni-empty-box">
-            조건에 맞는 대학이 없습니다. 검색어나 계열 필터를 조정해보세요.
+            <p>검색 조건에 일치하는 대학이나 학과가 없습니다.</p>
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm"
+              style={{ marginTop: 12 }}
+              onClick={() => {
+                setTrackFilter('all');
+                setGroupFilter('전체 군');
+                setTierFilter('all');
+                setSearchQuery('');
+              }}
+            >
+              필터 초기화
+            </button>
           </div>
         ) : (
-          <motion.div className="uni-explorer-grid" layout>
-            <AnimatePresence mode="popLayout">
-              {filtered.map((u, idx) => {
-                const evalInfo = parsedCompareScore
-                  ? calcLocalEvaluation(parsedCompareScore, u.cutoffRange)
-                  : null;
-                const tier = evalInfo ? TIER_META[evalInfo.bucket] : null;
-                const bookmarked = isBookmarked(u.id);
-                const comparing = isComparing(u.id);
-                const previewDepts =
-                  category !== '전체'
-                    ? (u.departments[category] || []).slice(0, 4)
-                    : [...(u.departments.인문 || []).slice(0, 2), ...(u.departments.자연 || []).slice(0, 2)];
+          <div className="uni-explorer-grid">
+            {filteredList.map((u, idx) => {
+              const evalData = u.evalData;
+              const bookmarked = isBookmarked(u.id);
+              const comparing = isComparing(u.id);
 
-                return (
-                  <motion.article
-                    key={u.id}
-                    layout
-                    initial={{ opacity: 0, y: 12 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, scale: 0.97 }}
-                    transition={{
-                      duration: 0.26,
-                      delay: Math.min(idx * 0.02, 0.16),
-                      ease: APPLE_EASE,
+              const displayTrack = trackFilter !== 'all' ? trackFilter : '인문';
+              const sampleDepts = [
+                ...(u.departments?.[displayTrack] || []).slice(0, 3),
+                ...(trackFilter === 'all' ? (u.departments?.자연 || []).slice(0, 2) : []),
+              ].slice(0, 5);
+
+              const trackWeights =
+                u.weights?.[trackFilter === '자연' ? '자연' : '인문'] || u.weights?.인문;
+
+              return (
+                <motion.article
+                  key={u.id}
+                  initial={{ opacity: 0, y: 12 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{
+                    duration: 0.28,
+                    delay: Math.min(idx * 0.025, 0.25),
+                    ease: APPLE_EASE,
+                  }}
+                  whileHover={{ y: -3 }}
+                  className={`uni-exp-card ${comparing ? 'is-comparing' : ''}`}
+                >
+                  <div
+                    className="uni-exp-body"
+                    onClick={() => openDetail(u)}
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        openDetail(u);
+                      }
                     }}
-                    whileHover={{ y: -3 }}
-                    className={`uni-exp-card ${comparing ? 'is-comparing' : ''}`}
                   >
-                    <div
-                      className="uni-exp-body"
-                      role="button"
-                      tabIndex={0}
-                      onClick={() => openDetail({ ...u, effectiveScore: parsedCompareScore })}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' || e.key === ' ') {
-                          e.preventDefault();
-                          openDetail({ ...u, effectiveScore: parsedCompareScore });
-                        }
-                      }}
-                    >
-                      <div className="uni-exp-top">
-                        <div>
-                          <div className="uni-exp-pills">
-                            {tier && (
-                              <span className={`tier-badge ${evalInfo.bucket}`}>
-                                <span className="tier-dot" />
-                                {tier.label}
-                              </span>
-                            )}
-                            <span className="exp-group-tag">{u.group}</span>
-                          </div>
-                          <h2 className="uni-exp-name">{u.university}</h2>
-                          <p className="uni-exp-type">{u.admissionType}</p>
-                        </div>
-
-                        <div className="uni-exp-cutoff num">
-                          <strong>{u.cutoff}점</strong>
-                          <span>평균 합격선</span>
-                        </div>
-                      </div>
-
-                      {/* Visual Cutoff Position Track */}
-                      <div className="exp-gauge">
-                        <div className="exp-track" aria-hidden="true">
-                          <div
-                            className={`exp-band ${evalInfo?.bucket || 'target'}`}
-                            style={{
-                              left: `${toPct(u.cutoffRange.min)}%`,
-                              width: `${Math.max(
-                                6,
-                                toPct(u.cutoffRange.max) - toPct(u.cutoffRange.min)
-                              )}%`,
-                            }}
-                          />
-                          <div
-                            className={`exp-avg-dot ${evalInfo?.bucket || 'target'}`}
-                            style={{ left: `${toPct(u.cutoffRange.avg)}%` }}
-                          />
-                          {parsedCompareScore && (
-                            <div
-                              className="exp-user-pin"
-                              style={{ left: `${toPct(parsedCompareScore)}%` }}
-                            />
-                          )}
-                        </div>
-                        <div className="exp-gauge-meta num">
-                          <span>범위 {u.cutoffRange.min}–{u.cutoffRange.max}점</span>
-                          {evalInfo ? (
-                            <span className={evalInfo.scoreDelta >= 0 ? 'pos' : 'neg'}>
-                              {evalInfo.scoreDelta > 0 ? '+' : ''}
-                              {evalInfo.scoreDelta}점 · 추정 {evalInfo.probability}%
+                    <div className="uni-exp-top">
+                      <div>
+                        <div className="uni-exp-pills">
+                          <span className="exp-group-tag">{u.group}</span>
+                          {evalData && (
+                            <span className={`tier-badge ${evalData.bucket}`}>
+                              <span className="tier-dot" />
+                              {TIER_META[evalData.bucket].label}
                             </span>
-                          ) : (
-                            <span className="exp-eng-short">영어: {u.englishRule}</span>
                           )}
                         </div>
+                        <h2 className="uni-exp-name">{u.university}</h2>
+                        <p className="uni-exp-type">{u.admissionType}</p>
                       </div>
 
-                      {/* Representative Departments */}
-                      <div className="exp-dept-preview">
-                        {previewDepts.map((dept) => (
-                          <span key={dept} className="exp-dept-chip">
-                            {dept}
-                          </span>
-                        ))}
+                      <div className="uni-exp-cutoff num">
+                        <strong>{u.cutoff}점</strong>
+                        <span>평균 합격선</span>
                       </div>
                     </div>
 
-                    <div className="uni-exp-actions">
-                      <button
-                        type="button"
-                        className={`uni-v-act-btn ${bookmarked ? 'active-save' : ''}`}
-                        onClick={() => toggleBookmark(u.id, previewDepts[0] || '', u.university)}
-                      >
-                        {bookmarked ? (
-                          <Check size={14} strokeWidth={2.2} />
-                        ) : (
-                          <Bookmark size={14} strokeWidth={1.8} />
+                    {/* Cutoff Distribution Bar */}
+                    <div className="exp-gauge">
+                      <div className="exp-track" aria-hidden="true">
+                        <div
+                          className={`exp-band ${evalData?.bucket || 'target'}`}
+                          style={{
+                            left: `${toPct(u.cutoffRange.min)}%`,
+                            width: `${Math.max(5, toPct(u.cutoffRange.max) - toPct(u.cutoffRange.min))}%`,
+                          }}
+                        />
+                        <div
+                          className={`exp-avg-dot ${evalData?.bucket || 'target'}`}
+                          style={{ left: `${toPct(u.cutoff)}%` }}
+                        />
+                        {parsedScore && (
+                          <div
+                            className="exp-user-pin"
+                            style={{ left: `${toPct(parsedScore)}%` }}
+                          />
                         )}
-                        {bookmarked ? '저장됨' : '관심 저장'}
-                      </button>
-
-                      <button
-                        type="button"
-                        className={`uni-v-act-btn ${comparing ? 'active-compare' : ''}`}
-                        onClick={() => toggleCompare(u.id, u.university)}
-                      >
-                        <Scale size={14} strokeWidth={1.8} />
-                        {comparing ? '비교 담김' : '비교 담기'}
-                      </button>
-
-                      <button
-                        type="button"
-                        className="uni-v-detail-link"
-                        onClick={() => openDetail({ ...u, effectiveScore: parsedCompareScore })}
-                      >
-                        상세
-                        <ChevronRight size={14} strokeWidth={2} />
-                      </button>
+                      </div>
+                      <div className="exp-gauge-meta num">
+                        <span>
+                          합격 범위 {u.cutoffRange.min}–{u.cutoffRange.max}점
+                        </span>
+                        {evalData ? (
+                          <span className={evalData.scoreDelta >= 0 ? 'pos' : 'neg'}>
+                            내 점수 {evalData.scoreDelta > 0 ? '+' : ''}
+                            {evalData.scoreDelta}점 (추정 {evalData.probability}%)
+                          </span>
+                        ) : (
+                          <span className="exp-eng-short">{u.englishRule}</span>
+                        )}
+                      </div>
                     </div>
-                  </motion.article>
-                );
-              })}
-            </AnimatePresence>
-          </motion.div>
+
+                    {/* 2025 Competition Rate, Waitlist Ratio & Subject Weights */}
+                    <div className="exp-stats-chips num">
+                      <span className="exp-stat-chip">
+                        경쟁률 {u.competitionRate ?? 5.0}:1
+                      </span>
+                      <span className="exp-stat-chip">
+                        충원율 {u.waitlistRatio ?? 75}%
+                      </span>
+                      {trackWeights && (
+                        <span className="exp-stat-chip">
+                          국{Math.round(trackWeights.kor)}·수{Math.round(trackWeights.math)}·탐{Math.round(trackWeights.inq)}
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Sample Departments */}
+                    <div className="exp-dept-preview">
+                      {sampleDepts.map((d) => (
+                        <span key={d} className="exp-dept-chip">
+                          {d}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Card Footer */}
+                  <div className="uni-exp-actions">
+                    <button
+                      type="button"
+                      className={`uni-v-act-btn ${bookmarked ? 'active-save' : ''}`}
+                      onClick={() => toggleBookmark(u.id, sampleDepts[0] || '', u.university)}
+                    >
+                      {bookmarked ? <Check size={14} strokeWidth={2.2} /> : <Bookmark size={14} strokeWidth={1.8} />}
+                      <span>{bookmarked ? '저장됨' : '관심 저장'}</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      className={`uni-v-act-btn ${comparing ? 'active-compare' : ''}`}
+                      onClick={() => toggleCompare(u.id, u.university)}
+                    >
+                      <Scale size={14} strokeWidth={1.8} />
+                      <span>{comparing ? '비교 중' : '비교 담기'}</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      className="uni-v-detail-link"
+                      onClick={() => openDetail(u)}
+                    >
+                      <span>상세 보기</span>
+                      <ChevronRight size={14} strokeWidth={2} />
+                    </button>
+                  </div>
+                </motion.article>
+              );
+            })}
+          </div>
         )}
       </div>
     </div>

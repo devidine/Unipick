@@ -42,8 +42,8 @@ export function AuthProvider({ children }) {
     return data;
   }, []);
 
-  const register = useCallback(async (username, password, displayName) => {
-    const data = await authApi.register(username, password, displayName);
+  const demoLogin = useCallback(async () => {
+    const data = await authApi.demoLogin();
     if (data?.success && data.token) {
       localStorage.setItem('unipick_token', data.token);
       setUser(data.user);
@@ -51,12 +51,25 @@ export function AuthProvider({ children }) {
     return data;
   }, []);
 
-  const updateProfile = useCallback(async (displayName) => {
-    const data = await authApi.updateProfile(displayName);
+  const register = useCallback(async (usernameOrPayload, password, displayName) => {
+    const data = await authApi.register(usernameOrPayload, password, displayName);
+    if (data?.success && data.token) {
+      localStorage.setItem('unipick_token', data.token);
+      setUser(data.user);
+    }
+    return data;
+  }, []);
+
+  const updateProfile = useCallback(async (payloadOrDisplayName) => {
+    const data = await authApi.updateProfile(payloadOrDisplayName);
     if (data?.success && data.user) {
       setUser(data.user);
     }
     return data;
+  }, []);
+
+  const changePassword = useCallback(async (currentPassword, newPassword) => {
+    return authApi.changePassword(currentPassword, newPassword);
   }, []);
 
   const refreshUser = useCallback(async () => {
@@ -73,7 +86,17 @@ export function AuthProvider({ children }) {
 
   return (
     <AuthContext.Provider
-      value={{ user, loading, login, register, logout, updateProfile, refreshUser }}
+      value={{
+        user,
+        loading,
+        login,
+        demoLogin,
+        register,
+        logout,
+        updateProfile,
+        changePassword,
+        refreshUser,
+      }}
     >
       {children}
     </AuthContext.Provider>

@@ -39,11 +39,25 @@ async function request(path, options = {}) {
 export const authApi = {
   login: (username, password) =>
     request('/api/login', { method: 'POST', body: { username, password }, includeAuth: false }),
-  register: (username, password, displayName) =>
-    request('/api/register', { method: 'POST', body: { username, password, displayName }, includeAuth: false }),
+  demoLogin: () =>
+    request('/api/demo-login', { method: 'POST', body: {}, includeAuth: false }),
+  register: (usernameOrPayload, password, displayName) => {
+    const body =
+      typeof usernameOrPayload === 'object' && usernameOrPayload !== null
+        ? usernameOrPayload
+        : { username: usernameOrPayload, password, displayName };
+    return request('/api/register', { method: 'POST', body, includeAuth: false });
+  },
   me: () => request('/api/me'),
-  updateProfile: (displayName) =>
-    request('/api/profile', { method: 'PUT', body: { displayName } }),
+  updateProfile: (payloadOrName) => {
+    const body =
+      typeof payloadOrName === 'object' && payloadOrName !== null
+        ? payloadOrName
+        : { displayName: payloadOrName };
+    return request('/api/profile', { method: 'PUT', body });
+  },
+  changePassword: (currentPassword, newPassword) =>
+    request('/api/password', { method: 'PUT', body: { currentPassword, newPassword } }),
 };
 
 export const universityApi = {
@@ -57,13 +71,14 @@ export const universityApi = {
 };
 
 export const consultApi = {
-  analyze: ({ score, major, category, englishGrade, save = true }) =>
+  analyze: ({ score, major, category, englishGrade, subjects = null, save = true }) =>
     request('/api/consult', {
       method: 'POST',
-      body: { score, major, category, englishGrade, save },
+      body: { score, major, category, englishGrade, subjects, save },
     }),
   list: () => request('/api/consultations'),
   get: (id) => request(`/api/consultations/${id}`),
+  getById: (id) => request(`/api/consultations/${id}`),
   remove: (id) => request(`/api/consultations/${id}`, { method: 'DELETE' }),
 };
 

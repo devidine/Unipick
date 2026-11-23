@@ -137,6 +137,13 @@ export function BookmarksProvider({ children }) {
     setCompareOpen(false);
   }, []);
 
+  const openCompareGroup = useCallback((ids = []) => {
+    const unique = [...new Set(ids.filter(Boolean))].slice(0, 4);
+    if (unique.length === 0) return;
+    setCompareIds(unique);
+    setCompareOpen(true);
+  }, []);
+
   const value = useMemo(
     () => ({
       bookmarks,
@@ -146,6 +153,7 @@ export function BookmarksProvider({ children }) {
       isComparing,
       toggleCompare,
       clearCompare,
+      openCompareGroup,
       compareOpen,
       setCompareOpen,
       detailTarget,
@@ -160,6 +168,7 @@ export function BookmarksProvider({ children }) {
       isComparing,
       toggleCompare,
       clearCompare,
+      openCompareGroup,
       compareOpen,
       detailTarget,
     ]

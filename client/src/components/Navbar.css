@@ -168,6 +168,33 @@
   white-space: nowrap;
 }
 
+.account-target-pill {
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+  background-color: var(--bg-surface);
+  color: var(--ink-secondary);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.mobile-user-avatar {
+  width: 21px;
+  height: 21px;
+  border-radius: 50%;
+  color: #ffffff;
+  font-size: 10.5px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+@media (max-width: 520px) {
+  .account-target-pill {
+    display: none;
+  }
+}
+
 /* ── Mobile Bottom Bar ── */
 .mobile-bottom-nav {
   display: none;

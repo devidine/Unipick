@@ -101,6 +101,24 @@
   letter-spacing: 0;
 }
 
+.sim-active-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+  background: rgba(251, 191, 36, 0.18);
+  color: #fde68a;
+  font-size: 11.5px;
+  font-weight: 600;
+}
+
+.summary-top-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 .summary-saved-pill {
   display: inline-flex;
   align-items: center;
@@ -112,6 +130,70 @@
   border: 1px solid rgba(255, 255, 255, 0.12);
   padding: 6px 13px;
   border-radius: var(--radius-full);
+}
+
+.summary-action-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 12px;
+  border-radius: var(--radius-full);
+  background: rgba(255, 255, 255, 0.10);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 600;
+  transition: background-color 0.18s ease, transform 0.18s ease;
+}
+
+.summary-action-btn:hover {
+  background: rgba(255, 255, 255, 0.20);
+}
+
+.summary-action-btn:active {
+  transform: scale(0.96);
+}
+
+/* Subject Balance Profile Strip */
+.subject-profile-strip {
+  margin-top: 16px;
+  padding: 12px 16px;
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.11);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.subject-profile-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: var(--radius-full);
+  background: #ffffff;
+  color: #111114;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.subject-profile-scores {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #e4e4e7;
+}
+
+.subject-profile-summary {
+  width: 100%;
+  font-size: 12.5px;
+  color: rgba(244, 244, 246, 0.72);
+  line-height: 1.45;
 }
 
 .summary-desc {
@@ -561,6 +643,15 @@
   border-radius: var(--radius-full);
 }
 
+.uni-v-dept-tier {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ink-primary);
+  background-color: rgba(17, 17, 20, 0.07);
+  padding: 3px 8px;
+  border-radius: var(--radius-full);
+}
+
 .uni-v-name {
   font-size: 18px;
   font-weight: 700;
@@ -689,6 +780,34 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.uni-v-meta-chips {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.uni-v-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 9px;
+  border-radius: var(--radius-full);
+  background-color: var(--bg-surface);
+  color: var(--ink-secondary);
+  font-size: 11.5px;
+  font-weight: 600;
+}
+
+.uni-v-chip.advantage {
+  background-color: var(--tier-safety-bg);
+  color: var(--tier-safety);
+}
+
+.uni-v-chip.caution {
+  background-color: var(--tier-reach-bg);
+  color: var(--tier-reach);
 }
 
 /* Card Footer Actions */
@@ -937,7 +1056,30 @@
 
 @media (max-width: 768px) {
   .report-summary-card {
-    padding: 20px 18px;
+    padding: 20px 16px;
+    border-radius: 22px;
+  }
+
+  .summary-level {
+    font-size: 21px;
+  }
+
+  .summary-top-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .kpi-grid {
+    gap: 8px;
+    margin-top: 16px;
+  }
+
+  .kpi-tile {
+    padding: 14px;
+  }
+
+  .kpi-value {
+    font-size: 23px;
   }
 
   .uni-visual-grid,
@@ -950,14 +1092,41 @@
     align-items: flex-start;
   }
 
+  .sim-controls {
+    width: 100%;
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    scrollbar-width: none;
+  }
+
+  .sim-controls::-webkit-scrollbar {
+    display: none;
+  }
+
+  .sim-chip {
+    flex-shrink: 0;
+  }
+
   .tier-pill-tabs {
     width: 100%;
     overflow-x: auto;
     flex-wrap: nowrap;
+    scrollbar-width: none;
+  }
+
+  .tier-pill-tabs::-webkit-scrollbar {
+    display: none;
   }
 
   .tier-tab-btn {
     white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  .group-filter-pills {
+    width: 100%;
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
   }
 
   .guide-trigger {

@@ -1,34 +1,40 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  ArrowDown,
+  BookmarkCheck,
   Calculator,
   Check,
   ChevronDown,
   Save,
+  Share2,
   SlidersHorizontal,
+  X,
 } from 'lucide-react';
 import { consultApi, universityApi } from '../utils/api';
 import { useAuth } from '../contexts/auth-context';
 import { useToast } from '../contexts/toast-context';
-import { APPLE_EASE } from '../utils/admission';
+import {
+  APPLE_EASE,
+  formatReportSummaryText,
+  saveGuestHistoryItem,
+} from '../utils/admission';
 import AnalysisReport from '../components/AnalysisReport';
 import './MainAnalysisPage.css';
 
 const FALLBACK_MAJORS = [
-  '컴퓨터공학과',
+  '컴퓨터공학부',
   '경영학과',
-  '경제학과',
-  '전자공학과',
-  '소프트웨어학과',
-  '심리학과',
+  '경제학부',
+  '반도체공학과',
+  '인공지능학과',
+  '의예과',
   '시각디자인학과',
 ];
 
 const QUICK_PRESETS = [
-  { score: 392, major: '경영학과', label: '392 · 경영' },
-  { score: 378, major: '컴퓨터공학과', label: '378 · 컴공' },
-  { score: 352, major: '시각디자인학과', label: '352 · 디자인' },
+  { score: 395, major: '경영학과', label: '395 · 경영' },
+  { score: 382, major: '컴퓨터공학부', label: '382 · 컴공' },
+  { score: 364, major: '자유전공학부', label: '364 · 자유전공' },
 ];
 
 const CATEGORIES = [
@@ -39,6 +45,34 @@ const CATEGORIES = [
 ];
 
 const ENGLISH_GRADES = [1, 2, 3, 4, 5];
+
+function readUrlAnalysisParams() {
+  if (typeof window === 'undefined') return null;
+  try {
+    const sp = new URLSearchParams(window.location.search);
+    const rawScore = sp.get('score');
+    const rawMajor = sp.get('major');
+    if (!rawScore && !rawMajor) return null;
+    const parsedScore = Number(rawScore);
+    const validScore =
+      Number.isFinite(parsedScore) && parsedScore >= 200 && parsedScore <= 450
+        ? Math.round(parsedScore)
+        : 378;
+    const parsedEng = Number(sp.get('eng'));
+    const validEng =
+      Number.isInteger(parsedEng) && parsedEng >= 1 && parsedEng <= 5 ? parsedEng : 1;
+    const rawCat = sp.get('cat') || '';
+    const validCat = ['인문', '자연', '예체능'].includes(rawCat) ? rawCat : '';
+    return {
+      score: validScore,
+      major: (rawMajor || '컴퓨터공학부').trim().slice(0, 60),
+      englishGrade: validEng,
+      category: validCat,
+    };
+  } catch {
+    return null;
+  }
+}
 
 export default function MainAnalysisPage({
   initialQuery = null,
@@ -52,74 +86,103 @@ export default function MainAnalysisPage({
   const { user, refreshUser } = useAuth();
   const toast = useToast();
 
-  const hasValidCache = Boolean(!initialQuery?.autoRun && cachedReport && cachedParams);
+  const [urlQuery] = useState(() => readUrlAnalysisParams());
+  const effectiveInit = initialQuery || urlQuery;
+  const hasValidCache = Boolean(!effectiveInit?.autoRun && !urlQuery && cachedReport && cachedParams);
 
   const [score, setScore] = useState(() =>
-    initialQuery?.score
-      ? String(initialQuery.score)
+    effectiveInit?.score
+      ? String(effectiveInit.score)
       : hasValidCache
         ? String(cachedParams.score)
         : '378'
   );
   const [major, setMajor] = useState(() =>
-    initialQuery?.major
-      ? initialQuery.major
+    effectiveInit?.major
+      ? effectiveInit.major
       : hasValidCache
         ? cachedParams.major
-        : '컴퓨터공학과'
+        : '컴퓨터공학부'
   );
   const [category, setCategory] = useState(() =>
-    initialQuery?.category !== undefined
-      ? initialQuery.category || ''
+    effectiveInit?.category !== undefined
+      ? effectiveInit.category || ''
       : hasValidCache
         ? cachedParams.category || ''
         : ''
   );
   const [englishGrade, setEnglishGrade] = useState(() =>
-    initialQuery?.englishGrade
-      ? initialQuery.englishGrade
+    effectiveInit?.englishGrade
+      ? effectiveInit.englishGrade
       : hasValidCache
         ? cachedParams.englishGrade || 1
         : 1
   );
 
+  const [activeSubjects, setActiveSubjects] = useState(() =>
+    hasValidCache ? cachedParams.subjects || null : null
+  );
+
   // 초간편 UX: 세부 설정(과목 합산기·계열·영어 등급)은 필요할 때만 깔끔하게 펼침
   const [showAdvanced, setShowAdvanced] = useState(() =>
     Boolean(
-      (initialQuery?.englishGrade && initialQuery.englishGrade > 1) ||
-        (hasValidCache && (cachedParams.englishGrade > 1 || cachedParams.category))
+      (effectiveInit?.englishGrade && effectiveInit.englishGrade > 1) ||
+        (hasValidCache && (cachedParams.englishGrade > 1 || cachedParams.category || cachedParams.subjects))
     )
   );
-  const [subjects, setSubjects] = useState({ kor: '132', math: '130', sub1: '60', sub2: '56' });
+  const [subjects, setSubjects] = useState(() =>
+    hasValidCache && cachedParams?.subjects
+      ? {
+          kor: String(cachedParams.subjects.kor),
+          math: String(cachedParams.subjects.math),
+          sub1: String(cachedParams.subjects.sub1),
+          sub2: String(cachedParams.subjects.sub2),
+        }
+      : { kor: '128', math: '134', sub1: '59', sub2: '57' }
+  );
   const [popularMajors, setPopularMajors] = useState(FALLBACK_MAJORS);
 
   const [report, setReport] = useState(() => (hasValidCache ? cachedReport : null));
   const [isPreview, setIsPreview] = useState(() =>
-    initialQuery?.autoRun ? false : hasValidCache ? cachedIsPreview : true
+    effectiveInit?.autoRun ? false : hasValidCache ? cachedIsPreview : true
   );
   const [baseParams, setBaseParams] = useState(() => (hasValidCache ? cachedParams : null));
-  const [simOffset, setSimOffset] = useState(0);
+  const [simOffset, setSimOffset] = useState(() =>
+    hasValidCache && cachedReport?.meta?.score && cachedParams?.score
+      ? cachedReport.meta.score - cachedParams.score
+      : 0
+  );
   const [loading, setLoading] = useState(() => !hasValidCache);
   const [liveSyncing, setLiveSyncing] = useState(false);
   const [savingRecord, setSavingRecord] = useState(false);
   const [formError, setFormError] = useState('');
 
   const reportSectionRef = useRef(null);
-  const hasInteractedRef = useRef(Boolean(initialQuery?.autoRun || (hasValidCache && !cachedIsPreview)));
+  const hasInteractedRef = useRef(
+    Boolean(effectiveInit?.autoRun || urlQuery || (hasValidCache && !cachedIsPreview))
+  );
+  const subjectSig = activeSubjects
+    ? `${activeSubjects.kor}-${activeSubjects.math}-${activeSubjects.sub1}-${activeSubjects.sub2}`
+    : '';
   const lastFetchedSigRef = useRef(
     hasValidCache
-      ? `${cachedParams.score}|${cachedParams.major}|${cachedParams.category || ''}|${cachedParams.englishGrade || 1}`
+      ? `${cachedParams.score}|${cachedParams.major}|${cachedParams.category || ''}|${cachedParams.englishGrade || 1}|${subjectSig}`
       : ''
   );
 
-  // 인기 학과 로드
+  // 인기 학과 로드 (label 또는 name 안전 추출)
   useEffect(() => {
     let active = true;
     universityApi
       .list()
       .then((data) => {
         if (active && data?.success && Array.isArray(data.popularMajors)) {
-          setPopularMajors(data.popularMajors.map((m) => m.name));
+          const parsed = data.popularMajors
+            .map((m) => (typeof m === 'string' ? m : m?.label || m?.name))
+            .filter(Boolean);
+          if (parsed.length > 0) {
+            setPopularMajors(parsed);
+          }
         }
       })
       .catch(() => {});
@@ -128,7 +191,7 @@ export default function MainAnalysisPage({
     };
   }, []);
 
-  // 실시간 자동 재계산 (점수 슬라이더·입력·학과·계열·영어 변경 시 160ms 디바운스로 즉시 반영)
+  // 실시간 자동 재계산 (점수 슬라이더·입력·학과·계열·영어·과목점수 변경 시 160ms 디바운스로 즉시 반영)
   useEffect(() => {
     const numScore = Math.round(Number(score));
     const trimmedMajor = major.trim();
@@ -136,7 +199,7 @@ export default function MainAnalysisPage({
       return;
     }
 
-    const sig = `${numScore}|${trimmedMajor}|${category}|${englishGrade}`;
+    const sig = `${numScore}|${trimmedMajor}|${category}|${englishGrade}|${subjectSig}`;
     if (sig === lastFetchedSigRef.current && report) {
       return;
     }
@@ -158,6 +221,7 @@ export default function MainAnalysisPage({
           major: trimmedMajor,
           category: category || undefined,
           englishGrade,
+          subjects: activeSubjects,
           save: shouldAutoSave,
         });
 
@@ -169,6 +233,7 @@ export default function MainAnalysisPage({
             major: trimmedMajor,
             category,
             englishGrade,
+            subjects: activeSubjects,
           };
           const previewFlag = !hasInteractedRef.current;
           setReport(data);
@@ -201,6 +266,8 @@ export default function MainAnalysisPage({
     major,
     category,
     englishGrade,
+    activeSubjects,
+    subjectSig,
     report,
     initialQuery,
     onScoreChange,
@@ -208,9 +275,8 @@ export default function MainAnalysisPage({
     refreshUser,
   ]);
 
-  // 명시적 분석 확인 / 로그인 시 내역 저장
-  const handleSubmit = async (e) => {
-    e.preventDefault();
+  // 현재 분석 결과를 내역에 명시적으로 저장 (비로그인 로컬 스냅샷 + 로그인 서버 DB 동시 지원)
+  const handleSaveSnapshot = useCallback(async () => {
     const numScore = Math.round(Number(score));
     const trimmedMajor = major.trim();
 
@@ -233,6 +299,7 @@ export default function MainAnalysisPage({
         major: trimmedMajor,
         category: category || undefined,
         englishGrade,
+        subjects: activeSubjects,
         save: Boolean(user),
       });
 
@@ -242,19 +309,25 @@ export default function MainAnalysisPage({
           major: trimmedMajor,
           category,
           englishGrade,
+          subjects: activeSubjects,
         };
-        lastFetchedSigRef.current = `${numScore}|${trimmedMajor}|${category}|${englishGrade}`;
-        setReport(data);
+        lastFetchedSigRef.current = `${numScore}|${trimmedMajor}|${category}|${englishGrade}|${subjectSig}`;
+
+        // 비로그인·로그인 모두 로컬 스냅샷에도 보관하여 게스트도 즉시 분석 내역 탭에서 확인 가능
+        saveGuestHistoryItem(data.meta);
+
+        const savedReport = { ...data, saved: true };
+        setReport(savedReport);
         setIsPreview(false);
         setBaseParams(nextParams);
         setSimOffset(0);
         if (onScoreChange) onScoreChange(numScore);
-        if (onReportUpdated) onReportUpdated(data, nextParams, false);
-        if (data.saved) {
-          toast.success('현재 분석 결과가 내역에 저장되었습니다.');
-          if (refreshUser) refreshUser();
+        if (onReportUpdated) onReportUpdated(savedReport, nextParams, false);
+
+        if (user && data.saved && refreshUser) {
+          refreshUser();
         }
-        reportSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        toast.success('현재 분석 결과가 [분석 내역]에 저장되었습니다.');
       } else {
         setFormError(data?.error || '분석을 완료하지 못했습니다.');
       }
@@ -263,6 +336,24 @@ export default function MainAnalysisPage({
     } finally {
       setSavingRecord(false);
     }
+  }, [
+    score,
+    major,
+    category,
+    englishGrade,
+    activeSubjects,
+    subjectSig,
+    user,
+    onScoreChange,
+    onReportUpdated,
+    refreshUser,
+    toast,
+  ]);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    await handleSaveSnapshot();
+    reportSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
 
   const handleSimulateOffset = useCallback(
@@ -280,6 +371,7 @@ export default function MainAnalysisPage({
           major: baseParams.major,
           category: baseParams.category || undefined,
           englishGrade: baseParams.englishGrade,
+          subjects: offset === 0 ? baseParams.subjects : null,
           save: false,
         });
         if (data?.success) {
@@ -300,23 +392,55 @@ export default function MainAnalysisPage({
     setMajor(preset.major);
     setCategory('');
     setEnglishGrade(1);
+    setActiveSubjects(null);
     setFormError('');
   };
 
   const handleApplySubjectSum = () => {
-    const sum =
-      (Number(subjects.kor) || 0) +
-      (Number(subjects.math) || 0) +
-      (Number(subjects.sub1) || 0) +
-      (Number(subjects.sub2) || 0);
+    const kor = Number(subjects.kor) || 0;
+    const math = Number(subjects.math) || 0;
+    const sub1 = Number(subjects.sub1) || 0;
+    const sub2 = Number(subjects.sub2) || 0;
+    const sum = kor + math + sub1 + sub2;
     if (sum < 200 || sum > 450) {
       toast.error(`합산 점수(${sum}점)가 유효 범위(200~450점)를 벗어납니다.`);
       return;
     }
     hasInteractedRef.current = true;
     setScore(String(Math.round(sum)));
-    toast.success(`과목 합산 점수 ${Math.round(sum)}점이 실시간 반영되었습니다.`);
+    setActiveSubjects({ kor, math, sub1, sub2 });
+    toast.success(`과목 합산 ${Math.round(sum)}점 및 대학별 반영비율 유불리가 적용되었습니다.`);
   };
+
+  const handleCopyShareLink = useCallback(async () => {
+    if (typeof window === 'undefined') return;
+    const sp = new URLSearchParams();
+    sp.set('score', String(Math.round(Number(score) || 378)));
+    sp.set('major', major.trim() || '컴퓨터공학부');
+    if (englishGrade > 1) sp.set('eng', String(englishGrade));
+    if (category) sp.set('cat', category);
+
+    const shareUrl = `${window.location.origin}${window.location.pathname}?${sp.toString()}`;
+    window.history.replaceState(null, '', `?${sp.toString()}`);
+
+    try {
+      await navigator.clipboard.writeText(shareUrl);
+      toast.success('현재 성적·전공 조건이 담긴 분석 공유 링크가 복사되었습니다.');
+    } catch {
+      toast.info('주소창에 현재 분석 조건 링크가 반영되었습니다.');
+    }
+  }, [score, major, englishGrade, category, toast]);
+
+  const handleCopyReportSummary = useCallback(async () => {
+    if (!report?.meta) return;
+    const text = formatReportSummaryText(report.meta);
+    try {
+      await navigator.clipboard.writeText(text);
+      toast.success('분석 리포트 핵심 요약과 3장 추천 배치가 클립보드에 복사되었습니다.');
+    } catch {
+      toast.error('클립보드 복사에 실패했습니다.');
+    }
+  }, [report, toast]);
 
   const subjectSumPreview =
     (Number(subjects.kor) || 0) +
@@ -345,10 +469,10 @@ export default function MainAnalysisPage({
             <h1 className="hero-headline">
               성적만 움직이면,
               <br />
-              지원 가능 대학이 바로 보입니다.
+              지원 가능 대학과 3장 원서 조합이 바로 보입니다.
             </h1>
             <p className="hero-lead">
-              복잡한 절차 없이 표준점수와 희망 학과만 선택하세요. 2025학년도 서울권 21개 대학 정시 합격선 기준으로 즉시 비교합니다.
+              표준점수와 희망 학과만 선택하세요. 2025학년도 서울권 21개 대학의 학과별 합격선·충원율·영어 감점·영역별 유불리를 실시간으로 시뮬레이션합니다.
             </p>
           </motion.div>
 
@@ -385,6 +509,7 @@ export default function MainAnalysisPage({
                       onChange={(e) => {
                         hasInteractedRef.current = true;
                         setScore(e.target.value);
+                        setActiveSubjects(null);
                         if (formError) setFormError('');
                       }}
                       placeholder="378"
@@ -403,6 +528,7 @@ export default function MainAnalysisPage({
                       onChange={(e) => {
                         hasInteractedRef.current = true;
                         setScore(e.target.value);
+                        setActiveSubjects(null);
                         if (formError) setFormError('');
                       }}
                       className="apple-slider"
@@ -415,6 +541,26 @@ export default function MainAnalysisPage({
                       <span>450</span>
                     </div>
                   </div>
+                </div>
+
+                {/* Touch-Friendly Quick Score Stepper Buttons */}
+                <div className="score-stepper-row num" role="group" aria-label="점수 미세 조절">
+                  {[-5, -1, 1, 5].map((delta) => (
+                    <button
+                      key={delta}
+                      type="button"
+                      className="score-step-btn"
+                      onClick={() => {
+                        hasInteractedRef.current = true;
+                        const next = Math.max(200, Math.min(450, (Number(score) || 378) + delta));
+                        setScore(String(next));
+                        setActiveSubjects(null);
+                        if (formError) setFormError('');
+                      }}
+                    >
+                      {delta > 0 ? `+${delta}점` : `${delta}점`}
+                    </button>
+                  ))}
                 </div>
               </div>
 
@@ -436,13 +582,13 @@ export default function MainAnalysisPage({
                     setMajor(e.target.value);
                     if (formError) setFormError('');
                   }}
-                  placeholder="예: 컴퓨터공학과, 경영학과"
+                  placeholder="예: 컴퓨터공학부, 경영학과, 의예과"
                   maxLength={60}
                   className="major-pill-input"
                 />
 
                 <div className="major-quick-chips" aria-label="인기 학과 원터치 선택">
-                  {popularMajors.slice(0, 6).map((m) => (
+                  {popularMajors.slice(0, 7).map((m) => (
                     <button
                       key={m}
                       type="button"
@@ -472,6 +618,7 @@ export default function MainAnalysisPage({
                   <SlidersHorizontal size={13} strokeWidth={1.9} />
                   <span>
                     세부 설정 · {category || '자동'} · 영어 {englishGrade === 5 ? '5등급↓' : `${englishGrade}등급`}
+                    {activeSubjects ? ' · 과목별 유불리 ON' : ''}
                   </span>
                   <ChevronDown size={13} className={showAdvanced ? 'rotated' : ''} />
                 </button>
@@ -490,23 +637,26 @@ export default function MainAnalysisPage({
                 </div>
               </div>
 
-              <button
-                type="submit"
-                className="btn btn-primary cond-submit-btn"
-                disabled={savingRecord}
-              >
-                {user ? (
-                  <>
-                    <Save size={14} strokeWidth={2} />
-                    {savingRecord ? '저장 중...' : '내역에 저장하고 보기'}
-                  </>
-                ) : (
-                  <>
-                    결과 바로 보기
-                    <ArrowDown size={15} strokeWidth={2} />
-                  </>
-                )}
-              </button>
+              <div className="cond-right-actions">
+                <button
+                  type="button"
+                  className="btn btn-soft btn-sm"
+                  onClick={handleCopyShareLink}
+                  title="현재 분석 조건 링크 공유"
+                >
+                  <Share2 size={14} strokeWidth={1.9} />
+                  링크 공유
+                </button>
+
+                <button
+                  type="submit"
+                  className="btn btn-primary cond-submit-btn"
+                  disabled={savingRecord}
+                >
+                  <BookmarkCheck size={15} strokeWidth={2} />
+                  {savingRecord ? '저장 중...' : '현재 결과 내역에 저장'}
+                </button>
+              </div>
             </div>
 
             {/* Collapsible Optional Settings (Subject Sum + Track + English) */}
@@ -541,7 +691,7 @@ export default function MainAnalysisPage({
                       </div>
 
                       <div className="cond-option">
-                        <span className="cond-opt-label">영어 등급</span>
+                        <span className="cond-opt-label">영어 등급 (대학별 실제 감점 반영)</span>
                         <div className="cond-opt-pills" role="group" aria-label="영어 등급 선택">
                           {ENGLISH_GRADES.map((g) => (
                             <button
@@ -564,11 +714,23 @@ export default function MainAnalysisPage({
                       <div className="calc-head">
                         <span className="calc-head-title">
                           <Calculator size={13} strokeWidth={1.9} />
-                          과목별 표준점수 합산기
+                          과목별 표준점수 합산 및 대학별 반영비율 유불리 분석기
                         </span>
-                        <span className="num calc-sum-inline">
-                          합계 <strong>{subjectSumPreview}점</strong>
-                        </span>
+                        <div className="calc-head-right num">
+                          {activeSubjects && (
+                            <button
+                              type="button"
+                              className="calc-clear-btn"
+                              onClick={() => setActiveSubjects(null)}
+                            >
+                              <X size={12} strokeWidth={2} />
+                              과목별 유불리 해제
+                            </button>
+                          )}
+                          <span className="calc-sum-inline">
+                            합계 <strong>{subjectSumPreview}점</strong>
+                          </span>
+                        </div>
                       </div>
                       <div className="calc-row-wrap">
                         <div className="calc-inputs">
@@ -623,7 +785,7 @@ export default function MainAnalysisPage({
                           onClick={handleApplySubjectSum}
                         >
                           <Check size={13} strokeWidth={2.2} />
-                          적용
+                          합산 + 유불리 반영
                         </button>
                       </div>
                     </div>
@@ -660,14 +822,16 @@ export default function MainAnalysisPage({
                 <div className="guest-save-strip">
                   <div className="guest-save-copy">
                     <Save size={15} strokeWidth={1.9} />
-                    <span>로그인하면 분석 내역과 관심 대학을 기기 간 동기화해 보관할 수 있습니다.</span>
+                    <span>
+                      비로그인 상태에서도 이 브라우저의 [분석 내역] 탭에 스냅샷을 저장할 수 있으며, 로그인하면 모든 기기에서 동기화됩니다.
+                    </span>
                   </div>
                   <button
                     type="button"
                     className="btn btn-secondary btn-sm"
                     onClick={() => onOpenAuth('login')}
                   >
-                    로그인하여 저장
+                    계정 연동하기
                   </button>
                 </div>
               )}
@@ -677,18 +841,11 @@ export default function MainAnalysisPage({
                 baseScore={baseParams?.score ?? null}
                 simOffset={simOffset}
                 onSimulateOffset={handleSimulateOffset}
-                simLoading={liveSyncing}
+                simulating={liveSyncing}
                 isPreview={isPreview}
-                savedNotice={
-                  report.saved
-                    ? '내역 저장됨'
-                    : simOffset !== 0
-                      ? '시뮬레이션 반영'
-                      : liveSyncing
-                        ? '계산 중...'
-                        : '실시간 반영'
-                }
-                layoutPrefix="main-report"
+                onSaveSnapshot={handleSaveSnapshot}
+                onCopyShareLink={handleCopyShareLink}
+                onCopyReportSummary={handleCopyReportSummary}
               />
             </>
           ) : null}

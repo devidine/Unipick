@@ -47,12 +47,20 @@ function saveStore(store) {
   }
 }
 
+const VALID_AVATARS = ['obsidian', 'graphite', 'emerald', 'cobalt', 'amber'];
+
 function serializeUser(user, consultationCount = undefined) {
   if (!user) return null;
   const out = {
     id: user.id,
     username: user.username,
     displayName: user.displayName || user.username,
+    avatar: VALID_AVATARS.includes(user.avatar) ? user.avatar : 'obsidian',
+    statusMessage: user.statusMessage || '',
+    targetScore: Number(user.targetScore) || 385,
+    targetMajor: user.targetMajor || '컴퓨터공학부',
+    targetUniversity: user.targetUniversity || '성균관대학교',
+    examTrack: VALID_CATEGORIES.includes(user.examTrack) ? user.examTrack : '자연',
     createdAt: user.createdAt || null,
   };
   if (typeof consultationCount === 'number') out.consultationCount = consultationCount;
@@ -139,11 +147,18 @@ app.post('/api/register', (req, res) => {
     return res.status(409).json({ success: false, error: '이미 사용 중인 아이디입니다.' });
   }
 
+  const rawTargetScore = Number(req.body.targetScore);
   const newUser = {
     id: store.nextUserId++,
     username: rawUsername,
     passwordHash: bcrypt.hashSync(password, 10),
     displayName: rawDisplayName || rawUsername,
+    avatar: VALID_AVATARS.includes(req.body.avatar) ? req.body.avatar : 'obsidian',
+    statusMessage: typeof req.body.statusMessage === 'string' ? req.body.statusMessage.trim().slice(0, 60) : '',
+    targetScore: Number.isFinite(rawTargetScore) && rawTargetScore >= 200 && rawTargetScore <= 450 ? Math.round(rawTargetScore) : 385,
+    targetMajor: typeof req.body.targetMajor === 'string' && req.body.targetMajor.trim() ? req.body.targetMajor.trim().slice(0, 40) : '컴퓨터공학부',
+    targetUniversity: typeof req.body.targetUniversity === 'string' && req.body.targetUniversity.trim() ? req.body.targetUniversity.trim().slice(0, 40) : '성균관대학교',
+    examTrack: VALID_CATEGORIES.includes(req.body.examTrack) ? req.body.examTrack : '자연',
     createdAt: new Date().toISOString(),
   };
   store.users.push(newUser);
@@ -151,6 +166,31 @@ app.post('/api/register', (req, res) => {
 
   const token = jwt.sign({ userId: newUser.id }, JWT_SECRET, { expiresIn: '30d' });
   res.status(201).json({ success: true, token, user: serializeUser(newUser, 0) });
+});
+
+app.post('/api/demo-login', (req, res) => {
+  const store = loadStore();
+  let user = store.users.find((u) => u.username === 'demo_student');
+  if (!user) {
+    user = {
+      id: store.nextUserId++,
+      username: 'demo_student',
+      passwordHash: bcrypt.hashSync('unipick2026', 10),
+      displayName: '김유니 (수험생 체험)',
+      avatar: 'obsidian',
+      statusMessage: '2026 정시 컴퓨터공학부 목표 달성!',
+      targetScore: 388,
+      targetMajor: '컴퓨터공학부',
+      targetUniversity: '성균관대학교',
+      examTrack: '자연',
+      createdAt: new Date().toISOString(),
+    };
+    store.users.push(user);
+    saveStore(store);
+  }
+  const count = store.consultations.filter((c) => c.userId === user.id).length;
+  const token = jwt.sign({ userId: user.id }, JWT_SECRET, { expiresIn: '30d' });
+  res.json({ success: true, token, user: serializeUser(user, count) });
 });
 
 app.post('/api/login', (req, res) => {
@@ -188,15 +228,53 @@ app.put('/api/profile', authMiddleware, (req, res) => {
   const store = loadStore();
   const user = store.users.find((u) => u.id === req.userId);
   if (!user) return res.status(404).json({ success: false, error: '사용자를 찾을 수 없습니다.' });
+
   user.displayName = displayName;
+  if (VALID_AVATARS.includes(req.body.avatar)) user.avatar = req.body.avatar;
+  if (req.body.statusMessage !== undefined) {
+    user.statusMessage = String(req.body.statusMessage || '').trim().slice(0, 60);
+  }
+  if (req.body.targetScore !== undefined) {
+    const sc = Number(req.body.targetScore);
+    if (Number.isFinite(sc) && sc >= 200 && sc <= 450) user.targetScore = Math.round(sc);
+  }
+  if (typeof req.body.targetMajor === 'string' && req.body.targetMajor.trim()) {
+    user.targetMajor = req.body.targetMajor.trim().slice(0, 40);
+  }
+  if (typeof req.body.targetUniversity === 'string' && req.body.targetUniversity.trim()) {
+    user.targetUniversity = req.body.targetUniversity.trim().slice(0, 40);
+  }
+  if (VALID_CATEGORIES.includes(req.body.examTrack)) {
+    user.examTrack = req.body.examTrack;
+  }
+
   saveStore(store);
   const count = store.consultations.filter((c) => c.userId === user.id).length;
   res.json({ success: true, user: serializeUser(user, count) });
 });
 
+app.put('/api/password', authMiddleware, (req, res) => {
+  const currentPassword = typeof req.body.currentPassword === 'string' ? req.body.currentPassword : '';
+  const newPassword = typeof req.body.newPassword === 'string' ? req.body.newPassword : '';
+  if (!currentPassword || !newPassword) {
+    return res.status(400).json({ success: false, error: '현재 비밀번호와 새 비밀번호를 모두 입력해주세요.' });
+  }
+  if (newPassword.length < 4 || newPassword.length > 72) {
+    return res.status(400).json({ success: false, error: '새 비밀번호는 4자 이상 72자 이하로 입력해주세요.' });
+  }
+  const store = loadStore();
+  const user = store.users.find((u) => u.id === req.userId);
+  if (!user || !bcrypt.compareSync(currentPassword, user.passwordHash)) {
+    return res.status(401).json({ success: false, error: '현재 비밀번호가 일치하지 않습니다.' });
+  }
+  user.passwordHash = bcrypt.hashSync(newPassword, 10);
+  saveStore(store);
+  res.json({ success: true });
+});
+
 // ── 성적 분석 ──
 app.post('/api/consult', optionalAuth, (req, res) => {
-  const { score, major, category, englishGrade, save = true } = req.body || {};
+  const { score, major, category, englishGrade, subjects = null, save = true } = req.body || {};
   const scoreStr = String(score ?? '').trim();
   if (!scoreStr || !/^\d+(\.\d+)?$/.test(scoreStr)) {
     return res.status(400).json({ success: false, error: '수능 표준점수 합을 숫자로 입력해주세요.' });
@@ -219,6 +297,7 @@ app.post('/api/consult', optionalAuth, (req, res) => {
     major: cleanMajor,
     categoryOverride,
     englishGrade: safeEnglishGrade,
+    subjects: subjects && typeof subjects === 'object' ? subjects : null,
   });
 
   let consultationId = null;
@@ -279,6 +358,7 @@ app.get('/api/consultations/:id', authMiddleware, (req, res) => {
     major: row.major,
     categoryOverride: VALID_CATEGORIES.includes(row.category) ? row.category : null,
     englishGrade: row.meta?.englishGrade || 1,
+    subjects: row.meta?.subjectProfile || null,
   });
 
   res.json({

@@ -192,6 +192,36 @@
   color: var(--ink-muted);
 }
 
+.score-stepper-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.score-step-btn {
+  flex: 1;
+  height: 30px;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--border-subtle);
+  background-color: var(--bg-surface);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink-secondary);
+  transition:
+    background-color var(--duration-fast) var(--ease-apple),
+    color var(--duration-fast) var(--ease-apple),
+    transform var(--duration-fast) var(--ease-apple);
+}
+
+.score-step-btn:hover {
+  background-color: var(--bg-surface-hover);
+  color: var(--ink-primary);
+}
+
+.score-step-btn:active {
+  transform: scale(0.96);
+}
+
 /* Major Input & One-Tap Chips */
 .major-pill-input {
   width: 100%;
@@ -328,8 +358,16 @@
   color: var(--ink-primary);
 }
 
-.cond-submit-btn {
+.cond-right-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   margin-left: auto;
+  flex-wrap: wrap;
+}
+
+.cond-submit-btn {
+  margin-left: 0;
 }
 
 /* Collapsible Advanced Drawer */
@@ -412,6 +450,30 @@
   gap: 6px;
   font-weight: 600;
   color: var(--ink-primary);
+}
+
+.calc-head-right {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.calc-clear-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 9px;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--border-default);
+  background: var(--bg-canvas);
+  color: var(--ink-secondary);
+  font-size: 11.5px;
+  font-weight: 600;
+}
+
+.calc-clear-btn:hover {
+  color: var(--ink-primary);
+  border-color: var(--border-strong);
 }
 
 .calc-sum-inline strong {
@@ -541,16 +603,65 @@
 
 @media (max-width: 768px) {
   .hero-band {
-    padding: 24px 0 18px;
+    padding: 20px 0 16px;
+  }
+
+  .hero-headline {
+    font-size: 27px;
   }
 
   .condition-card {
     padding: 18px 16px;
     border-radius: 22px;
+    gap: 15px;
+  }
+
+  .major-quick-chips {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    padding-bottom: 2px;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .major-quick-chips::-webkit-scrollbar {
+    display: none;
+  }
+
+  .major-quick-chip {
+    flex-shrink: 0;
+    height: 32px;
+    padding: 0 13px;
+  }
+
+  .cond-left-tools {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .cond-right-actions {
+    width: 100%;
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 8px;
+  }
+
+  .cond-submit-btn {
+    width: 100%;
+  }
+
+  .score-step-btn {
+    height: 34px;
+    font-size: 12.5px;
   }
 
   .calc-inputs {
     grid-template-columns: repeat(2, 1fr);
+  }
+
+  .calc-apply-btn {
+    width: 100%;
+    height: 40px;
   }
 
   .skel-cards-grid {

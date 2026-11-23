@@ -1,512 +1,769 @@
-// services/analysis.js — UniPick 정시 입시 분석 엔진
+// services/analysis.js
+// UniPick 정시 입시 분석 엔진 (2025학년도 합격선 데이터 기반)
+// - 한/영 전공 입력 정규화 및 계열 자동 분류
+// - 희망 학과(메디컬/첨단·계약/상경·특성화)별 세분화 커트라인 보정
+// - 대학별 실제 영어 등급 감점 반영 및 영어 유불리 진단
+// - 국어·수학·탐구 과목별 강점 분석 및 대학별 반영비율 유불리 산출
+// - 가·나·다군 3장 최적 원서 조합(포트폴리오) 자동 설계
+
 const { universityData, DATA_SOURCES } = require('../data/universities');
 
-const ENGLISH_TO_KOREAN = {
-  computer: '컴퓨터',
+// 영문·약어 전공 입력 → 한글 전공명 매핑
+const ENG_TO_KOR_MAP = {
+  medicine: '의예과',
+  medical: '의예과',
+  premed: '의예과',
+  dentistry: '치의예과',
+  dental: '치의예과',
+  pharmacy: '약학과',
+  vet: '수의예과',
+  veterinary: '수의예과',
+  orientalmedicine: '한의예과',
+  nursing: '간호학과',
+  cs: '컴퓨터공학',
+  computer: '컴퓨터공학',
+  computerscience: '컴퓨터공학',
   software: '소프트웨어',
-  engineering: '공학',
-  science: '과학',
-  business: '경영',
-  economics: '경제',
-  management: '경영',
-  finance: '금융',
-  accounting: '세무',
-  design: '디자인',
-  architecture: '건축',
-  electrical: '전기',
-  electronic: '전자',
-  mechanical: '기계',
-  chemical: '화학',
-  biology: '생물',
-  physics: '물리',
-  mathematics: '수학',
-  math: '수학',
-  psychology: '심리',
-  media: '미디어',
-  communication: '커뮤니케이션',
-  journalism: '언론',
-  law: '법학',
-  education: '교육',
-  music: '음악',
-  art: '미술',
-  film: '영화',
-  data: '데이터',
-  robot: '로봇',
-  pharmacy: '약학',
-  medicine: '의예',
-  medical: '의예',
-  nursing: '간호',
-  statistics: '통계',
-  sociology: '사회',
-  politics: '정치',
-  international: '국제',
-  english: '영어',
-  korean: '국어',
-  history: '역사',
-  philosophy: '철학',
-  material: '신소재',
-  environment: '환경',
-  civil: '토목',
-  game: '게임',
-  animation: '애니메이션',
-  fashion: '패션',
-  automotive: '자동차',
-  aerospace: '항공',
-  biotech: '바이오',
-  bio: '바이오',
-  veterinary: '수의',
-  dental: '치의',
-  oriental: '한의',
-  information: '정보',
-  semiconductor: '반도체',
-};
-
-const SHORT_ABBR_TO_KOREAN = {
-  cs: '컴퓨터과학',
   sw: '소프트웨어',
   ai: '인공지능',
-  it: '정보통신',
-  ict: '정보통신',
-  ux: '디자인',
-  ui: '디자인',
+  artificialintelligence: '인공지능',
+  semiconductor: '반도체공학',
+  ee: '전자전기공학',
+  electrical: '전자전기공학',
+  electronics: '전자전기공학',
+  mechanical: '기계공학',
+  mech: '기계공학',
+  chemical: '화공생명공학',
+  chem: '화공생명공학',
+  architecture: '건축학',
+  business: '경영학과',
+  management: '경영학과',
+  mba: '경영학과',
+  economics: '경제학부',
+  econ: '경제학부',
+  finance: '금융학부',
+  media: '미디어커뮤니케이션',
+  communication: '미디어커뮤니케이션',
+  psychology: '심리학과',
+  law: '법학과',
+  politics: '정치외교학',
+  publicadmin: '행정학과',
+  liberalarts: '자유전공학부',
+  design: '시각디자인',
+  art: '미술',
+  fineart: '미술',
+  music: '음악',
+  sports: '체육',
+  pe: '체육교육과',
 };
-
-const ARTS_KEYWORDS = [
-  '디자인', '미술', '음악', '연극', '영화', '애니메이션', '만화', '게임',
-  '조형', '회화', '패션', '의상', '시각', '산업디자인', '영상', '무용', '아트',
-];
-
-const STEM_KEYWORDS = [
-  '컴퓨터', '소프트웨어', 'sw', 'ai', '인공지능', '전자', '전기', '기계',
-  '화학', '화공', '생물', '생명', '물리', '수학', '수리', '공학', '정보통신',
-  '데이터', '건축', '토목', '환경', '신소재', '재료', '반도체', '로봇',
-  '자동차', '항공', '약학', '의예', '의학', '치의', '한의', '수의', '바이오',
-  'it', 'ict', '통계', '과학', '시스템', '지능',
-];
-
-const MEDICAL_KEYWORDS = ['의예', '의학', '의과', '치의', '한의', '약학', '수의'];
 
 const VALID_CATEGORIES = ['인문', '자연', '예체능'];
 
+// 기준 영어 등급별 평균 표준점수 감점 추정치 (글로벌 메타 표시용)
 const ENGLISH_PENALTY_MAP = {
-  1: { penalty: 0, label: '1등급 (감점 없음)' },
-  2: { penalty: -1.5, label: '2등급 (평균 -1.5점 반영)' },
-  3: { penalty: -4.0, label: '3등급 (평균 -4.0점 반영)' },
-  4: { penalty: -8.0, label: '4등급 (평균 -8.0점 반영)' },
-  5: { penalty: -13.0, label: '5등급 이하 (평균 -13.0점 반영)' },
+  1: 0,
+  2: -1.5,
+  3: -4.0,
+  4: -7.5,
+  5: -11.0,
 };
 
 function normalizeToKorean(input) {
-  let result = String(input || '').trim();
-  for (const [abbr, kor] of Object.entries(SHORT_ABBR_TO_KOREAN)) {
-    const regex = new RegExp(`(?<![a-zA-Z])${abbr}(?![a-zA-Z])`, 'gi');
-    result = result.replace(regex, kor);
+  if (!input || typeof input !== 'string') return '';
+  const trimmed = input.trim();
+  const key = trimmed.toLowerCase().replace(/[\s\-_.]/g, '');
+  if (ENG_TO_KOR_MAP[key]) return ENG_TO_KOR_MAP[key];
+
+  for (const [eng, kor] of Object.entries(ENG_TO_KOR_MAP)) {
+    if (eng.length >= 4 && key.includes(eng)) return kor;
   }
-  for (const [eng, kor] of Object.entries(ENGLISH_TO_KOREAN)) {
-    const regex = new RegExp(eng, 'gi');
-    result = result.replace(regex, kor);
-  }
-  return result;
+  return trimmed;
 }
 
 function getCategory(major, categoryOverride = null) {
   if (categoryOverride && VALID_CATEGORIES.includes(categoryOverride)) {
     return categoryOverride;
   }
-  const normalized = normalizeToKorean(major).toLowerCase();
-  if (ARTS_KEYWORDS.some((k) => normalized.includes(k))) return '예체능';
-  if (STEM_KEYWORDS.some((k) => normalized.includes(k))) return '자연';
+  const m = normalizeToKorean(major);
+
+  if (
+    /의예|의학|의대|치의|한의|수의|약학|간호|컴퓨터|소프트웨어|SW|인공지능|AI|데이터|반도체|전기|전자|기계|화공|화학|생명|생물|물리|수학|수리|건축|도시공학|로봇|모빌리티|자동차|항공|에너지|신소재|정보보호|정보통신|공학|자연|이과/.test(
+      m
+    )
+  ) {
+    return '자연';
+  }
+
+  if (/디자인|미술|조형|조소|회화|성악|기악|작곡|음악|체육|스포츠|태권도|연극|영화|영상|만화|애니|예체능|예술/.test(m)) {
+    return '예체능';
+  }
+
   return '인문';
 }
 
 function isMedicalTrack(major) {
-  const normalized = normalizeToKorean(major).toLowerCase();
-  return MEDICAL_KEYWORDS.some((k) => normalized.includes(k));
+  const m = normalizeToKorean(major);
+  return /의예|의학|의대|의과|치의|한의|약학|수의/.test(m);
 }
 
-function findMatchingDepartment(deptList, major) {
-  if (!deptList || deptList.length === 0) return null;
-  const normalizedMajor = normalizeToKorean(major);
-  const majorClean = normalizedMajor.replace(/학과|학부|전공|대학/g, '').trim();
+/**
+ * 희망 전공과 가장 잘 매칭되는 해당 대학 학과를 탐색합니다.
+ */
+function findMatchingDepartment(uni, major, category) {
+  const normalized = normalizeToKorean(major);
+  const trackDepts = uni.departments[category] || [];
+  const allDepts = [
+    ...trackDepts,
+    ...(uni.departments.인문 || []),
+    ...(uni.departments.자연 || []),
+    ...(uni.departments.예체능 || []),
+  ];
 
-  if (majorClean.length > 0) {
-    const exact = deptList.find((d) => {
-      const dClean = d.replace(/학과|학부|전공|대학/g, '').trim();
-      return (
-        d.includes(normalizedMajor) ||
-        d.includes(majorClean) ||
-        (dClean.length >= 2 && normalizedMajor.includes(dClean))
-      );
-    });
-    if (exact) return { department: exact, exactMatch: true };
+  if (!normalized) {
+    return {
+      department: trackDepts[0] || allDepts[0] || '일반전형 모집단위',
+      isExactMatch: false,
+      hasMedicalDept: true,
+    };
   }
 
-  const keywords = majorClean.match(/[\uAC00-\uD7AF]+|[a-zA-Z]+/g) || [majorClean];
-  let best = null;
-  let bestScore = 0;
+  const coreKeyword = normalized
+    .replace(/(학과|학부|전공|계열|대학|과)$/g, '')
+    .trim();
 
-  for (const dept of deptList) {
-    const deptClean = dept.replace(/학과|학부|전공|대학|·|&/g, '');
-    let score = 0;
-    for (const kw of keywords) {
-      if (kw.length >= 2 && deptClean.includes(kw)) {
-        score += kw.length;
+  // 1) 동일 계열 내 정확/부분 일치
+  const exactInTrack = trackDepts.find(
+    (d) => d.includes(normalized) || (coreKeyword.length >= 2 && d.includes(coreKeyword))
+  );
+  if (exactInTrack) {
+    return { department: exactInTrack, isExactMatch: true, hasMedicalDept: true };
+  }
+
+  // 2) 전체 계열 내 부분 일치
+  const exactInAll = allDepts.find(
+    (d) => d.includes(normalized) || (coreKeyword.length >= 2 && d.includes(coreKeyword))
+  );
+  if (exactInAll) {
+    return { department: exactInAll, isExactMatch: true, hasMedicalDept: true };
+  }
+
+  // 3) 의미 그룹 유사 매칭
+  const similarityRules = [
+    { pattern: /의예|의학|의대|의과/, target: /의예|의학|의과/ },
+    { pattern: /치의|치대/, target: /치의/ },
+    { pattern: /한의|한방/, target: /한의/ },
+    { pattern: /약학|약대/, target: /약학/ },
+    { pattern: /수의/, target: /수의/ },
+    { pattern: /컴퓨터|소프트웨어|SW|인공지능|AI|데이터|정보/, target: /컴퓨터|소프트웨어|SW|인공지능|AI|데이터|정보/ },
+    { pattern: /반도체|전자|전기|통신/, target: /반도체|전자|전기|통신|ICT/ },
+    { pattern: /기계|자동차|모빌리티|항공|로봇/, target: /기계|자동차|모빌리티|항공|로봇/ },
+    { pattern: /화공|화학|생명|바이오|신소재|에너지/, target: /화공|화학|생명|바이오|신소재|에너지/ },
+    { pattern: /경영|회계|세무|금융|파이낸스|비즈니스/, target: /경영|금융|파이낸스|회계|세무/ },
+    { pattern: /경제|통상|무역/, target: /경제|통상|무역/ },
+    { pattern: /미디어|언론|방송|광고|홍보|커뮤니케이션/, target: /미디어|언론|광고|커뮤니케이션/ },
+    { pattern: /정치|외교|행정|법|경찰|공공/, target: /정치|외교|행정|법|경찰|공공|리더|정책/ },
+    { pattern: /심리|사회|복지|아동|청소년/, target: /심리|사회|복지/ },
+    { pattern: /자유전공|자율전공|무전공/, target: /자유전공|자율전공|열린전공|인터칼리지/ },
+    { pattern: /디자인|시각|산업디자인|미술/, target: /디자인|미술|조형/ },
+    { pattern: /체육|스포츠/, target: /체육|스포츠/ },
+  ];
+
+  for (const rule of similarityRules) {
+    if (rule.pattern.test(normalized)) {
+      const matched = trackDepts.find((d) => rule.target.test(d)) || allDepts.find((d) => rule.target.test(d));
+      if (matched) {
+        return { department: matched, isExactMatch: true, hasMedicalDept: true };
+      }
+      if (/의예|의학|치의|한의|약학|수의/.test(normalized)) {
+        return {
+          department: `${trackDepts[0] || allDepts[0] || '자연계열'} (해당 전공 미개설)`,
+          isExactMatch: false,
+          hasMedicalDept: false,
+        };
       }
     }
-    if (score > bestScore) {
-      bestScore = score;
-      best = dept;
-    }
   }
 
-  if (best) return { department: best, exactMatch: true };
-  return { department: deptList[0], exactMatch: false };
+  return {
+    department: trackDepts[0] || allDepts[0] || '일반전형 모집단위',
+    isExactMatch: false,
+    hasMedicalDept: true,
+  };
 }
 
-function getEnglishAdjustment(englishGrade) {
-  const g = Number(englishGrade);
-  if (!Number.isInteger(g) || g <= 1) return { grade: 1, ...ENGLISH_PENALTY_MAP[1] };
-  if (g >= 5) return { grade: 5, ...ENGLISH_PENALTY_MAP[5] };
-  return { grade: g, ...ENGLISH_PENALTY_MAP[g] };
+/**
+ * 매칭된 학과 및 계열에 따른 현실적인 세분화 커트라인 보정
+ * - 의예/치의/한의/약학/수의 등 메디컬 모집단위는 대학 평균 커트라인보다 훨씬 높은 실제 합격선을 반영
+ * - 반도체/AI/컴퓨터 계약·첨단학과 및 최상위 인기 학과는 상향 보정
+ */
+function getAdjustedCutoffRange(uni, category, matchedDept, hasMedicalDept = true) {
+  const baseAvg = uni.cutoff;
+  const baseMin = uni.cutoffRange.min;
+  const baseMax = uni.cutoffRange.max;
+  const dept = String(matchedDept || '');
+
+  let targetAvg = baseAvg;
+  let deptTierLabel = '일반 모집단위';
+
+  if (hasMedicalDept && /의예|의학|의과대학/.test(dept)) {
+    targetAvg = Math.max(baseAvg + 13, Math.min(baseMax, 412));
+    deptTierLabel = '의학계열 최상위';
+  } else if (hasMedicalDept && /치의|한의/.test(dept)) {
+    targetAvg = Math.max(baseAvg + 10, Math.min(baseMax, 404));
+    deptTierLabel = '치·한의학계열';
+  } else if (hasMedicalDept && /약학|수의/.test(dept)) {
+    targetAvg = Math.max(baseAvg + 7, Math.min(baseMax, 398));
+    deptTierLabel = '약학·수의학계열';
+  } else if (/시스템반도체|반도체시스템|반도체공학|반도체융합|차세대통신|스마트모빌리티|미래자동차/.test(dept)) {
+    targetAvg = baseAvg + 4;
+    deptTierLabel = '첨단·계약학과 강세';
+  } else if (/컴퓨터|소프트웨어|인공지능|AI|데이터사이언스/.test(dept)) {
+    targetAvg = baseAvg + 2;
+    deptTierLabel = 'IT·SW 선호 학과';
+  } else if (/글로벌경영|글로벌경제|글로벌금융|파이낸스경영|LD학부|LT학부|경찰행정|세무학과/.test(dept)) {
+    targetAvg = baseAvg + 3;
+    deptTierLabel = '인문 최상위 특성화';
+  } else if (/경영|경제/.test(dept)) {
+    targetAvg = baseAvg + 1;
+    deptTierLabel = '상경계열 주력';
+  } else if (category === '예체능') {
+    targetAvg = baseAvg - 3;
+    deptTierLabel = '예체능 전형';
+  } else if (category === '자연' && !/인문|사회|자유전공/.test(dept)) {
+    targetAvg = baseAvg + 1;
+  }
+
+  const delta = Math.round(targetAvg - baseAvg);
+  const spreadLow = Math.max(5, baseAvg - baseMin);
+  const spreadHigh = Math.max(5, Math.min(10, baseMax - baseAvg));
+
+  const adjustedAvg = baseAvg + delta;
+  const adjustedMin = adjustedAvg - spreadLow;
+  const adjustedMax = Math.max(adjustedAvg + 5, Math.min(425, adjustedAvg + spreadHigh));
+
+  return {
+    cutoff: adjustedAvg,
+    cutoffRange: {
+      min: adjustedMin,
+      avg: adjustedAvg,
+      max: adjustedMax,
+    },
+    deptAdjustment: delta,
+    deptTierLabel,
+  };
 }
 
+/**
+ * 과목별 표준점수(국어·수학·탐구1·탐구2) 입력 시 수험생 강점 유형 진단 및 대학별 반영비율 유불리 산출
+ */
+function analyzeSubjectProfile(subjects) {
+  if (!subjects || typeof subjects !== 'object') return null;
+  const kor = Number(subjects.kor);
+  const math = Number(subjects.math);
+  const sub1 = Number(subjects.sub1);
+  const sub2 = Number(subjects.sub2);
+
+  if (
+    !Number.isFinite(kor) ||
+    !Number.isFinite(math) ||
+    !Number.isFinite(sub1) ||
+    !Number.isFinite(sub2) ||
+    kor <= 0 ||
+    math <= 0 ||
+    sub1 <= 0 ||
+    sub2 <= 0
+  ) {
+    return null;
+  }
+
+  const inq = sub1 + sub2;
+  const total = kor + math + inq;
+  if (total < 150 || total > 500) return null;
+
+  const korShare = kor / total;
+  const mathShare = math / total;
+  const inqShare = inq / total;
+
+  let strengthType = '균형형';
+  let summary = '국어·수학·탐구 전 영역이 고르게 분포되어 대학별 반영비율 편차에 따른 불이익이 적습니다.';
+
+  if (math - kor >= 6 || mathShare >= 0.365) {
+    strengthType = '수학 강점형';
+    summary = '수학 표준점수 우위가 뚜렷하여 수학 반영 비중이 40% 이상인 대학(서강대·서울대·연세대·한양대·시립대 등)에서 환산점수가 유리합니다.';
+  } else if (kor - math >= 6 || korShare >= 0.365) {
+    strengthType = '국어 강점형';
+    summary = '국어 표준점수 경쟁력이 높아 국어 비중이 37~42%로 높은 대학(성균관대·경희대·중앙대·숭실대·단국대 등) 지원 시 유리합니다.';
+  } else if (inqShare >= 0.355) {
+    strengthType = '탐구 강점형';
+    summary = '탐구 2과목 표준점수 합이 우수하여 탐구 반영 비중이 35% 이상인 대학(경희대·한국외대·한양대 자연·홍익대 자연 등)에서 강점을 발휘합니다.';
+  }
+
+  return {
+    kor,
+    math,
+    sub1,
+    sub2,
+    inq,
+    total,
+    korPct: Number((korShare * 100).toFixed(1)),
+    mathPct: Number((mathShare * 100).toFixed(1)),
+    inqPct: Number((inqShare * 100).toFixed(1)),
+    strengthType,
+    summary,
+  };
+}
+
+function calcUniversityWeightAdvantage(uni, category, subjectProfile) {
+  const trackKey = category === '자연' ? '자연' : '인문';
+  const weights = uni.weights?.[trackKey] || uni.weights?.인문 || { kor: 33.3, math: 33.3, inq: 33.4 };
+
+  if (!subjectProfile) {
+    return {
+      weights,
+      weightDelta: 0,
+      weightAdvantageLabel: '반영비율 기본',
+    };
+  }
+
+  const korShareDiff = subjectProfile.korPct / 100 - 1 / 3;
+  const mathShareDiff = subjectProfile.mathPct / 100 - 1 / 3;
+  const inqShareDiff = subjectProfile.inqPct / 100 - 1 / 3;
+
+  const rawDelta =
+    (korShareDiff * (weights.kor - 33.3) +
+      mathShareDiff * (weights.math - 33.3) +
+      inqShareDiff * (weights.inq - 33.4)) *
+    1.5;
+
+  const weightDelta = Math.max(-3.5, Math.min(3.5, Number(rawDelta.toFixed(1))));
+  const weightAdvantageLabel =
+    weightDelta >= 0.5
+      ? '반영비율 유리'
+      : weightDelta <= -0.5
+        ? '반영비율 불리'
+        : '반영비율 중립';
+
+  return {
+    weights,
+    weightDelta,
+    weightAdvantageLabel,
+  };
+}
+
+/**
+ * 내 환산 점수(effectiveScore)와 대학 합격 분포(cutoffRange)를 비교해
+ * 추정 합격 가능성(5~98%)과 지원 판정 구분(안정/적정/소신/도전)을 계산합니다.
+ */
 function calculateProbability(effectiveScore, cutoffRange) {
-  const diff = cutoffRange.avg - effectiveScore; // 양수: 커트라인보다 부족, 음수: 여유
-  const spread = Math.max(4, (cutoffRange.max - cutoffRange.min) / 2);
+  const { min, avg, max } = cutoffRange;
+  const diff = avg - effectiveScore;
+  const spread = Math.max(4, (max - min) / 2);
   const k = Math.max(5.5, spread * 0.95);
-  // 평균 커트라인과 동점일 때 추가합격(충원) 포함 약 56~58% 수준이 되도록 연속 로지스틱 곡선 적용
-  const raw = 100 / (1 + Math.exp((diff - 1.4) / k));
-  return Math.max(5, Math.min(98, Math.round(raw)));
+  const raw = Math.round(100 / (1 + Math.exp((diff - 1.4) / k)));
+  return Math.max(5, Math.min(98, raw));
 }
 
-function classifyByProbability(probability) {
-  if (probability >= 75) return 'safety';
-  if (probability >= 45) return 'target';
-  if (probability >= 15) return 'reach';
-  return 'challenge';
-}
-
-function getScoreAssessment(scoreNum) {
-  if (scoreNum >= 400) {
+function classifySupportTier(probability) {
+  if (probability >= 75) {
     return {
-      level: '최상위권',
-      percentileRange: '상위 0.5% ~ 1.5% 이내',
-      desc: '서울 최상위권 대학(SKY) 주요 학과 지원이 가능한 점수대입니다. 대학별 변환표준점수와 영어 감점 방식의 미세한 차이를 정밀하게 비교해야 합니다.',
+      bucket: 'safety',
+      tierLabel: '안정 지원',
+      tierShort: '안정',
+      summary: '전년도 합격자 평균 이상의 여유 점수가 확보된 구간입니다.',
     };
   }
-  if (scoreNum >= 385) {
+  if (probability >= 45) {
     return {
-      level: '상위권',
-      percentileRange: '상위 1.5% ~ 4% 이내',
-      desc: '서강·성균관·한양대 중심의 적정 지원과 함께 SKY 일부 학과 상향 지원을 병행할 수 있는 점수대입니다.',
+      bucket: 'target',
+      tierLabel: '적정 지원',
+      tierShort: '적정',
+      summary: '전년도 합격자 분포 중심권으로 적극 지원을 검토할 수 있는 구간입니다.',
     };
   }
-  if (scoreNum >= 370) {
+  if (probability >= 15) {
     return {
-      level: '중상위권',
-      percentileRange: '상위 4% ~ 8% 이내',
-      desc: '중앙·경희·시립·외대 주요 학과에 안정~적정 지원이 가능하며, 가·나·다군 조합에 따라 상위권 대학 소신 지원도 노려볼 수 있습니다.',
-    };
-  }
-  if (scoreNum >= 350) {
-    return {
-      level: '중위권',
-      percentileRange: '상위 8% ~ 15% 이내',
-      desc: '건국·동국·홍익·숙명여대 등 서울 주요 중위권 대학에 경쟁력이 있으며, 영역별 반영비율 유불리에 따라 체감 합격선이 크게 달라집니다.',
-    };
-  }
-  if (scoreNum >= 330) {
-    return {
-      level: '중하위권',
-      percentileRange: '상위 15% ~ 25% 이내',
-      desc: '서울권 주요 대학의 특성화·중하위권 학과를 중심으로 상향·적정·안정 3장의 포트폴리오를 균형 있게 설계해야 하는 구간입니다.',
+      bucket: 'reach',
+      tierLabel: '소신 지원',
+      tierShort: '소신',
+      summary: '반영비율 유불리와 추가합격(충원율)을 고려해 도전 가능한 구간입니다.',
     };
   }
   return {
-    level: '서울권 하단 · 확장 권장',
-    percentileRange: '상위 25% 이하 추정',
-    desc: '서울권 일부 학과에 상향 도전할 수 있으며, 경기·인천 등 수도권 주요 대학과 지방 거점 국립대로 지원 범위를 함께 넓히는 전략을 권장합니다.',
+    bucket: 'challenge',
+    tierLabel: '도전 구간',
+    tierShort: '도전',
+    summary: '전년도 합격선 대비 점수 격차가 커 상향 조정이 필요한 구간입니다.',
   };
 }
 
-function generateRecommendations(scoreNum, major, options = {}) {
-  const { categoryOverride = null, englishGrade = 1 } = options;
-  const category = getCategory(major, categoryOverride);
-  const english = getEnglishAdjustment(englishGrade);
-  const effectiveScore = Number((scoreNum + english.penalty).toFixed(1));
+/**
+ * 가·나·다군 3장 최적 원서 조합(포트폴리오) 자동 생성
+ * - 동일 대학 중복 없이 가군 1개교, 나군 1개교, 다군 1개교를 배정
+ */
+function buildRecommendedPortfolios(evaluated) {
+  const groups = ['가군', '나군', '다군'];
 
-  const reach = [];
-  const target = [];
-  const safety = [];
-  const challenge = [];
-  const allEvaluated = [];
-
-  for (const uni of universityData) {
-    const deptList = uni.departments[category];
-    const match = findMatchingDepartment(deptList, major);
-    if (!match) continue;
-
-    const probability = calculateProbability(effectiveScore, uni.cutoffRange);
-    const bucket = classifyByProbability(probability);
-    const scoreDelta = Number((effectiveScore - uni.cutoff).toFixed(1)); // 양수: 여유, 음수: 부족
-    const deltaSign = scoreDelta > 0 ? '+' : '';
-    const basisSummary = `${uni.year}학년도 정시 평균 ${uni.cutoff}점(범위 ${uni.cutoffRange.min}–${uni.cutoffRange.max}점) 대비 ${deltaSign}${scoreDelta}점`;
-
-    const entry = {
-      id: uni.id,
-      university: uni.university,
-      shortName: uni.shortName,
-      department: match.department,
-      exactMatch: match.exactMatch,
-      departments: uni.departments,
-      cutoff: uni.cutoff,
-      cutoffRange: uni.cutoffRange,
-      diff: Number((uni.cutoff - effectiveScore).toFixed(1)),
-      scoreDelta,
-      probability,
-      bucket,
-      basisSummary,
-      tier: uni.tier,
-      group: uni.group,
-      englishRule: uni.englishRule,
-      note: uni.note,
-      source: uni.source,
-      year: uni.year,
-      admissionType: uni.admissionType,
-    };
-
-    allEvaluated.push(entry);
-
-    if (bucket === 'reach') reach.push(entry);
-    else if (bucket === 'target') target.push(entry);
-    else if (bucket === 'safety') safety.push(entry);
-    else challenge.push(entry);
-  }
-
-  reach.sort((a, b) => b.probability - a.probability || a.tier - b.tier);
-  target.sort((a, b) => a.tier - b.tier || Math.abs(60 - a.probability) - Math.abs(60 - b.probability));
-  safety.sort((a, b) => a.tier - b.tier || b.probability - a.probability);
-  challenge.sort((a, b) => b.probability - a.probability || b.tier - a.tier);
-  allEvaluated.sort((a, b) => b.cutoff - a.cutoff || a.tier - b.tier);
-
-  return {
-    category,
-    english,
-    effectiveScore,
-    reach: reach.slice(0, 4),
-    target: target.slice(0, 4),
-    safety: safety.slice(0, 4),
-    challenge: challenge.slice(0, 3),
-    counts: {
-      reach: reach.length,
-      target: target.length,
-      safety: safety.length,
-      challenge: challenge.length,
-      total: allEvaluated.length,
-    },
-    allEvaluated,
+  const hasGroup = (uni, g) => {
+    if (Array.isArray(uni.groups)) return uni.groups.includes(g);
+    return String(uni.group || '').includes(g.replace('군', ''));
   };
-}
 
-function generateStrategyTips(category, scoreNum, englishGrade = 1) {
-  const tips = [];
+  const pickBestForSlot = (group, desiredBuckets, usedIds, targetProb = 65) => {
+    const candidates = evaluated.filter((u) => hasGroup(u, group) && !usedIds.has(u.id));
+    if (candidates.length === 0) return null;
 
-  if (category === '자연') {
-    tips.push({
-      tag: '계열 전략',
-      title: '수학 반영 비중과 탐구 변환표준점수 확인',
-      body: '자연계열은 대학별로 수학 반영 비율(30~40%)과 과학탐구 가산점 여부가 크게 다릅니다. 수학 표준점수가 강점이라면 수학 비중이 높은 대학을 우선 검토하세요.',
-    });
-    tips.push({
-      tag: '교차지원',
-      title: '선택과목 제한 및 가산점 폐지 여부 점검',
-      body: '최근 다수 대학이 미적분·기하 및 과탐 필수 지정을 완화했으나, 여전히 가산점을 부여하는 대학이 많으므로 본인 선택과목에 따른 유불리를 환산 점수로 비교해야 합니다.',
-    });
-  } else if (category === '인문') {
-    tips.push({
-      tag: '계열 전략',
-      title: '국어·수학 반영비율에 따른 대학별 유불리 비교',
-      body: '인문계열은 국어 비중이 높은 대학과 수학 비중이 높은 대학으로 나뉩니다. 표준점수 합이 동일해도 강점 과목에 따라 대학별 환산 점수 순위가 달라집니다.',
-    });
-    tips.push({
-      tag: '교차지원',
-      title: '자연계열 수험생 교차지원 변수 고려',
-      body: '상위권 대학 인문계열(경영·경제 등)은 자연계열 수험생의 교차지원 비율이 높습니다. 전년도 최종 등록자 70% 컷과 충원율을 함께 확인하세요.',
-    });
-  } else {
-    tips.push({
-      tag: '전형 구조',
-      title: '수능 반영 비율과 실기·서류 비중 구분',
-      body: '예체능 계열은 비실기 전형(수능+서류)과 실기 위주 전형의 합격선 차이가 큽니다. 수능 성적이 강점이라면 수능 비중이 높은 모집단위를 우선 검토하세요.',
-    });
-  }
-
-  if (englishGrade >= 2) {
-    tips.push({
-      tag: '영어 반영',
-      title: `영어 ${englishGrade}등급 감점 폭이 작은 대학 우선 탐색`,
-      body: '서울대·서강대·동국대·중앙대 등은 1~2등급 간 격차가 상대적으로 작은 편인 반면, 연세대·경희대 등은 등급 차가 큽니다. 영어 반영 방식을 반드시 확인하세요.',
-    });
-  }
-
-  if (scoreNum >= 385) {
-    tips.push({
-      tag: '군별 배치',
-      title: '초박빙 구간, 0.5점 단위 환산점수 시뮬레이션 필수',
-      body: '상위권 구간은 동점자가 밀집해 있어 탐구 백분위 기반 변환표준점수가 당락을 좌우합니다. 가·나군 중 한 곳은 적정 이상으로 확보해 리스크를 통제하세요.',
-    });
-  } else if (scoreNum >= 350) {
-    tips.push({
-      tag: '군별 배치',
-      title: '다군 추가합격 회전율 활용 전략',
-      body: '중앙대·건국대·홍익대 등 다군 주요 모집단위는 중복합격 이탈로 충원율이 높습니다. 가·나군에서 안정/적정을 확보하고 다군을 전략 카드로 활용하세요.',
-    });
-  } else {
-    tips.push({
-      tag: '포트폴리오',
-      title: '상향 1 · 적정 1 · 안정 1 균형 조합 권장',
-      body: '정시 3장의 원서를 모두 상향으로 배치하면 위험도가 급증합니다. 안정권 1개 이상을 확보한 뒤 수도권·거점 국립대까지 함께 비교하세요.',
-    });
-  }
-
-  return tips;
-}
-
-function generateAdmissionsGuide(category, scoreNum) {
-  return [
-    {
-      id: 'weights',
-      title: '대학별 수능 반영비율은 어떻게 다른가요?',
-      summary: `${category}계열 기준 강점 과목에 따라 환산점수 격차가 크게 발생합니다.`,
-      content:
-        category === '자연'
-          ? '자연계열은 대체로 수학(30~40%)과 탐구(25~35%) 비중이 높습니다. 서울대·서강대·성균관대는 수학 영향력이 큰 편이며, 고려대·한양대는 비교적 균형 잡힌 반영 구조를 보입니다.'
-          : category === '인문'
-            ? '인문계열은 국어(30~35%) 비중이 큰 대학과 수학(30% 내외) 비중이 큰 대학으로 구분됩니다. 수학 표준점수가 높다면 서강대·성균관대 등 수학 가중치가 높은 대학이 유리합니다.'
-            : '예체능 계열은 국어·영어 중심 2~3개 영역만 반영하는 대학이 많습니다. 실기 반영 비율(30~70%)에 따라 수능 영향력이 크게 달라지므로 모집요강을 반드시 확인하세요.',
-    },
-    {
-      id: 'english',
-      title: '영어 절대평가 등급은 합격선에 얼마나 영향을 미치나요?',
-      summary: '감점제 vs 반영비율 포함 여부에 따라 2등급 기준 0.5점~5점 이상 차이납니다.',
-      content:
-        '서울대(2등급 -0.5점), 서강대(1등급 100/2등급 99), 동국대(2등급 -1점)는 2등급 불이익이 작습니다. 반면 연세대·경희대·한국외대 등은 등급 간 점수 차가 크므로, 영어 2등급 이하라면 감점 폭이 작은 대학을 우선 검토하는 것이 유리합니다.',
-    },
-    {
-      id: 'groups',
-      title: '가·나·다군 3장 원서 조합은 어떻게 구성해야 하나요?',
-      summary: '합격 확률 75% 이상 안정 1곳 확보 후 적정·상향을 조합하는 것이 기본 원칙입니다.',
-      content:
-        '정시는 가·나·다군 각 1회씩 총 3회 지원할 수 있습니다. 가장 일반적인 안정적 포트폴리오는 [안정 1 + 적정 1 + 상향 1] 조합입니다. 특히 다군은 모집 대학 수가 적어 경쟁률과 추가합격 충원율이 모두 높게 형성되는 특성이 있습니다.',
-    },
-    {
-      id: 'tuition',
-      title: '국공립대 등록금 및 성적 우수 장학금 기준이 궁금해요',
-      summary: '서울시립대·서울과기대는 국공립 등록금 혜택을 제공합니다.',
-      content: `서울 소재 국공립대(서울시립대, 서울과학기술대)는 사립대 대비 등록금 부담이 크게 낮습니다. 또한 현재 입력하신 ${scoreNum}점대 기준으로 안정권에 해당하는 대학 중 일부는 입학 성적 우수 장학금(최초합격 상위 %) 대상이 될 수 있습니다.`,
-    },
-    {
-      id: 'susi-jeongsi',
-      title: '이 분석 결과는 수시 전형에도 적용할 수 있나요?',
-      summary: '본 분석은 정시(수능 표준점수) 기준이며, 수시 지원 시 수능 최저 확인용으로 참고하세요.',
-      content:
-        '수시는 학생부교과·학생부종합·논술 전형으로 나뉘며 내신과 서류가 핵심입니다. 다만 정시로 진학 가능한 대학 라인을 먼저 파악해 두면 수시 6장 원서의 상향·적정 기준선(수시 납치 방지)을 설정하는 데 매우 유용합니다.',
-    },
-  ];
-}
-
-function buildSummaryMarkdown({ scoreNum, major, category, assessment, recs, tips }) {
-  let md = `## UniPick 성적 분석 결과\n\n`;
-  md += `**입력 성적:** 표준점수 합 **${scoreNum}점** | **희망 학과:** ${major} (${category}계열)\n\n`;
-  md += `**${assessment.level}** — ${assessment.desc}\n\n---\n\n`;
-
-  const addSection = (title, entries) => {
-    md += `#### ${title}\n`;
-    if (entries.length > 0) {
-      entries.forEach((r) => {
-        md += `- **${r.university}** ${r.department} — 합격 확률 약 ${r.probability}% (기준 커트라인 ${r.cutoff}점)\n`;
-      });
-    } else {
-      md += `- 해당 구간에 추천 대학이 없습니다.\n`;
+    for (const bucket of desiredBuckets) {
+      const inBucket = candidates
+        .filter((u) => u.bucket === bucket)
+        .sort((a, b) => Math.abs(a.probability - targetProb) - Math.abs(b.probability - targetProb));
+      if (inBucket.length > 0) return inBucket[0];
     }
-    md += `\n`;
+
+    return [...candidates].sort(
+      (a, b) => Math.abs(a.probability - targetProb) - Math.abs(b.probability - targetProb)
+    )[0];
   };
 
-  addSection('상향 지원 (Reach)', recs.reach);
-  addSection('적정 지원 (Target)', recs.target);
-  addSection('안정 지원 (Safety)', recs.safety);
+  const buildPreset = (key, label, badge, description, slotRules) => {
+    const usedIds = new Set();
+    const slots = {};
 
-  md += `---\n\n### 전략 요약\n\n`;
-  tips.forEach((t) => {
-    md += `- **${t.title}**: ${t.body}\n`;
-  });
-  return md;
+    // 다군은 모집 대학이 상대적으로 적으므로 다군 -> 나군 -> 가군 순으로 배정 후 가·나·다 순으로 정렬
+    const assignOrder = ['다군', '나군', '가군'];
+    for (const g of assignOrder) {
+      const rule = slotRules[g];
+      const chosen = pickBestForSlot(g, rule.buckets, usedIds, rule.targetProb);
+      if (chosen) {
+        usedIds.add(chosen.id);
+        slots[g] = {
+          group: g,
+          id: chosen.id,
+          university: chosen.university,
+          shortName: chosen.shortName,
+          department: chosen.department,
+          cutoff: chosen.cutoff,
+          cutoffRange: chosen.cutoffRange,
+          probability: chosen.probability,
+          scoreDelta: chosen.scoreDelta,
+          bucket: chosen.bucket,
+          tierLabel: chosen.tierLabel,
+          waitlistRatio: chosen.waitlistRatio,
+          competitionRate: chosen.competitionRate,
+          weightAdvantageLabel: chosen.weightAdvantageLabel,
+          weightDelta: chosen.weightDelta,
+          englishAdvantage: chosen.englishAdvantage,
+        };
+      } else {
+        slots[g] = null;
+      }
+    }
+
+    const orderedSlots = {};
+    for (const g of groups) {
+      orderedSlots[g] = slots[g] || null;
+    }
+
+    // 1개교 이상 합격 기대율: 1 - Π(1 - p_i)
+    const activeProbs = Object.values(orderedSlots)
+      .filter(Boolean)
+      .map((s) => Math.max(0.05, Math.min(0.98, s.probability / 100)));
+
+    const failAllProb = activeProbs.reduce((acc, p) => acc * (1 - p), 1);
+    const combinedProbability =
+      activeProbs.length > 0 ? Math.max(8, Math.min(99, Math.round((1 - failAllProb) * 100))) : 0;
+
+    return {
+      key,
+      label,
+      badge,
+      description,
+      slots: orderedSlots,
+      combinedProbability,
+    };
+  };
+
+  return {
+    balanced: buildPreset(
+      'balanced',
+      '균형 추천 포트폴리오',
+      '안정 1 · 적정 1 · 소신 1',
+      '가·나군에 적정 및 소신 목표 대학을 배치하고 다군(또는 나군)에 안정 지원 대학을 확보하는 표준 정시 전략입니다.',
+      {
+        가군: { buckets: ['target', 'reach', 'safety'], targetProb: 58 },
+        나군: { buckets: ['reach', 'target', 'safety'], targetProb: 36 },
+        다군: { buckets: ['safety', 'target', 'reach'], targetProb: 82 },
+      }
+    ),
+    safe: buildPreset(
+      'safe',
+      '안정 우선 포트폴리오',
+      '안정 2 · 적정 1',
+      '정시 재수 위험을 최소화하기 위해 2개 모집군에서 안정권을 확보하고 1개 군에서 적정 대학을 노리는 전략입니다.',
+      {
+        가군: { buckets: ['safety', 'target', 'reach'], targetProb: 80 },
+        나군: { buckets: ['target', 'safety', 'reach'], targetProb: 62 },
+        다군: { buckets: ['safety', 'target', 'reach'], targetProb: 88 },
+      }
+    ),
+    ambitious: buildPreset(
+      'ambitious',
+      '소신 도전 포트폴리오',
+      '적정 1 · 소신 2',
+      '상위권 선호 대학의 추가합격(충원율)과 반영비율 유불리를 적극 활용해 상향 돌파를 노리는 공격적 배치입니다.',
+      {
+        가군: { buckets: ['reach', 'target', 'challenge'], targetProb: 34 },
+        나군: { buckets: ['reach', 'target', 'challenge'], targetProb: 28 },
+        다군: { buckets: ['target', 'safety', 'reach'], targetProb: 68 },
+      }
+    ),
+  };
 }
 
-function analyzeAdmission({ score, major, categoryOverride = null, englishGrade = 1 }) {
-  const scoreNum = Number(score);
-  const cleanMajor = String(major || '').trim();
-  const assessment = getScoreAssessment(scoreNum);
-  const recs = generateRecommendations(scoreNum, cleanMajor, { categoryOverride, englishGrade });
-  const tips = generateStrategyTips(recs.category, scoreNum, recs.english.grade);
-  const guide = generateAdmissionsGuide(recs.category, scoreNum);
-  const medicalNotice = isMedicalTrack(cleanMajor)
-    ? '의예·치의예·한의예·약학·수의예 계열은 대학 전체 평균 커트라인과 별도의 최상위 커트라인(표준점수 합 405~425점 이상)이 적용됩니다. 본 결과는 해당 대학 일반 자연계열 기준 참고치이므로 의약학 전문 배치표를 함께 확인하세요.'
-    : null;
+/**
+ * 핵심 정시 입시 분석 함수
+ * @param {object} params
+ * @param {number} params.score - 국·수·탐(2) 표준점수 합 (200~450)
+ * @param {string} params.major - 희망 학과/전공
+ * @param {string|null} [params.categoryOverride] - 계열 수동 지정 ('인문' | '자연' | '예체능')
+ * @param {number} [params.englishGrade=1] - 영어 등급 (1~5)
+ * @param {object|null} [params.subjects=null] - 과목별 점수 ({ kor, math, sub1, sub2 })
+ */
+function analyzeAdmission({ score, major, categoryOverride = null, englishGrade = 1, subjects = null }) {
+  const scoreNum = Math.round(Number(score));
+  const normalizedMajor = normalizeToKorean(major);
+  const category = getCategory(normalizedMajor, categoryOverride);
+  const safeEnglishGrade = Math.min(5, Math.max(1, Number(englishGrade) || 1));
+  const englishPenalty = ENGLISH_PENALTY_MAP[safeEnglishGrade] ?? 0;
+  const effectiveScore = Number((scoreNum + englishPenalty).toFixed(1));
+  const medicalRequested = isMedicalTrack(normalizedMajor);
+  const subjectProfile = analyzeSubjectProfile(subjects);
+
+  let level = '인서울 중위권';
+  let percentileEstimate = '상위 12% 내외';
+  if (effectiveScore >= 404) {
+    level = '최상위권 (SKY·메디컬권)';
+    percentileEstimate = '상위 0.8% 이내';
+  } else if (effectiveScore >= 387) {
+    level = '상위권 (서성한·주요 상위권)';
+    percentileEstimate = '상위 3.0% 내외';
+  } else if (effectiveScore >= 373) {
+    level = '중상위권 (중경외시·건동홍 상단)';
+    percentileEstimate = '상위 6.5% 내외';
+  } else if (effectiveScore >= 357) {
+    level = '인서울 주력권 (건동홍·국숭세단)';
+    percentileEstimate = '상위 11.5% 내외';
+  } else if (effectiveScore >= 340) {
+    level = '인서울 및 수도권 적정권';
+    percentileEstimate = '상위 18% 내외';
+  } else {
+    level = '수도권 소신·전략 지원권';
+    percentileEstimate = '상위 25% 이하';
+  }
+
+  // 전체 21개 대학에 대해 희망 학과 매칭 + 대학별 영어 감점 + 과목 반영비율 유불리 평가
+  const evaluated = universityData
+    .filter((uni) => {
+      if (category === '예체능' && (uni.departments.예체능 || []).length === 0) {
+        return false;
+      }
+      return true;
+    })
+    .map((uni) => {
+      const { department, isExactMatch, hasMedicalDept } = findMatchingDepartment(
+        uni,
+        normalizedMajor,
+        category
+      );
+
+      const { cutoff, cutoffRange, deptAdjustment, deptTierLabel } = getAdjustedCutoffRange(
+        uni,
+        category,
+        department,
+        hasMedicalDept
+      );
+
+      const uniEnglishPenalty =
+        uni.englishPenalties?.[safeEnglishGrade] ?? ENGLISH_PENALTY_MAP[safeEnglishGrade] ?? 0;
+      const englishAdvantage = safeEnglishGrade >= 2 && Math.abs(uniEnglishPenalty) <= 1.2;
+
+      const { weights, weightDelta, weightAdvantageLabel } = calcUniversityWeightAdvantage(
+        uni,
+        category,
+        subjectProfile
+      );
+
+      const uniEffectiveScore = Number((scoreNum + uniEnglishPenalty + weightDelta).toFixed(1));
+      const probability = calculateProbability(uniEffectiveScore, cutoffRange);
+      const tier = classifySupportTier(probability);
+      const scoreDelta = Number((uniEffectiveScore - cutoffRange.avg).toFixed(1));
+
+      return {
+        id: uni.id,
+        university: uni.university,
+        shortName: uni.shortName,
+        region: uni.region,
+        group: uni.group,
+        groups: uni.groups || String(uni.group || '').split('/'),
+        competitionRate: uni.competitionRate || 5.0,
+        waitlistRatio: uni.waitlistRatio || 75,
+        weights,
+        admissionType: uni.admissionType,
+        englishRule: uni.englishRule,
+        englishPenalties: uni.englishPenalties,
+        englishPenalty: uniEnglishPenalty,
+        englishAdvantage,
+        weightDelta,
+        weightAdvantageLabel,
+        department,
+        isExactMatch,
+        hasMedicalDept,
+        baseCutoff: uni.cutoff,
+        cutoff,
+        cutoffRange,
+        deptAdjustment,
+        deptTierLabel,
+        probability,
+        scoreDelta,
+        effectiveScore: uniEffectiveScore,
+        bucket: tier.bucket,
+        tierLabel: tier.tierLabel,
+        tierShort: tier.tierShort,
+        tierSummary: tier.summary,
+        note: uni.note,
+        source: uni.source,
+        departments: uni.departments,
+      };
+    })
+    .filter((item) => !(medicalRequested && !item.hasMedicalDept))
+    .sort((a, b) => b.cutoff - a.cutoff);
+
+  const safetyList = evaluated.filter((u) => u.bucket === 'safety');
+  const targetList = evaluated.filter((u) => u.bucket === 'target');
+  const reachList = evaluated.filter((u) => u.bucket === 'reach');
+  const challengeList = evaluated.filter((u) => u.bucket === 'challenge');
+
+  // 지원 가능 대학 (안정 + 적정 + 소신)
+  const supportableList = evaluated.filter((u) => u.bucket !== 'challenge');
+
+  // 핵심 추천 3개교 (소신 1, 적정 1, 안정 1 우선 선발)
+  const pickClosest = (list, idealProb) => {
+    if (list.length === 0) return null;
+    return [...list].sort((a, b) => Math.abs(a.probability - idealProb) - Math.abs(b.probability - idealProb))[0];
+  };
+
+  const featured = {
+    safety: pickClosest(safetyList, 82),
+    target: pickClosest(targetList, 60),
+    reach: pickClosest(reachList, 32),
+  };
+
+  // 가·나·다군 3장 최적 원서 조합 추천
+  const recommendedPortfolios = buildRecommendedPortfolios(evaluated);
+
+  // 전략 어드바이스 생성
+  const strategyPoints = [];
+  if (targetList.length > 0 && safetyList.length > 0) {
+    strategyPoints.push(
+      `가·나·다군 3장 원서 중 1장은 안정권(${safetyList.slice(0, 2).map((u) => u.shortName).join('·')})으로 확보하고, 주력 군에서 적정권(${targetList.slice(0, 2).map((u) => u.shortName).join('·')})을 공략하는 포트폴리오가 유효합니다.`
+    );
+  } else if (reachList.length > 0 && targetList.length === 0 && safetyList.length === 0) {
+    strategyPoints.push(
+      '현재 점수대에서는 서울 주요 대학 대부분이 소신·도전 구간에 해당하므로, 다군 및 수도권 대학까지 범위를 넓혀 안정 카드를 반드시 확보하시기 바랍니다.'
+    );
+  } else if (safetyList.length >= 10) {
+    strategyPoints.push(
+      '다수 대학에서 안정 지원권이 확보되어 있으므로, 가·나군에서 상위권 대학 및 인기 학과로 적극적인 적정·소신 지원이 가능합니다.'
+    );
+  }
+
+  if (safeEnglishGrade >= 2) {
+    const lowPenaltyUnis = evaluated
+      .filter((u) => u.englishAdvantage && u.bucket !== 'challenge')
+      .slice(0, 3)
+      .map((u) => u.shortName);
+    const lowPenaltyText =
+      lowPenaltyUnis.length > 0 ? ` (${lowPenaltyUnis.join('·')} 등 감점 최소)` : '';
+    strategyPoints.push(
+      `영어 ${safeEnglishGrade}등급 기준 대학별 실제 감점 폭 차이가 큽니다${lowPenaltyText}. 연세대·경희대 등 영어 감점 폭이 큰 대학보다 서강대·서울대·동국대·중앙대 등 등급 간 격차가 완만한 대학을 우선 검토하세요.`
+    );
+  } else {
+    strategyPoints.push(
+      '영어 1등급을 확보하여 연세대·한국외대·경희대 등 영어 등급 간 점수 차가 큰 대학 지원 시 상대적 우위를 점할 수 있습니다.'
+    );
+  }
+
+  if (subjectProfile && subjectProfile.strengthType !== '균형형') {
+    strategyPoints.push(`${subjectProfile.strengthType} 성적 구조: ${subjectProfile.summary}`);
+  } else if (category === '자연') {
+    strategyPoints.push(
+      '자연계열은 수학 표준점수 반영 비중(37.5~45%)과 과학탐구 변환표준점수 및 가산점 여부가 당락에 큰 영향을 미칩니다.'
+    );
+  } else {
+    strategyPoints.push(
+      '인문계열은 국어·수학 반영 비율이 대학마다 상이(국어 강세 vs 수학 강세)하므로 본인 고득점 과목 비중이 높은 대학을 선택하면 환산점수가 상승합니다.'
+    );
+  }
 
   const meta = {
     score: scoreNum,
-    effectiveScore: recs.effectiveScore,
-    englishGrade: recs.english.grade,
-    englishPenalty: recs.english.penalty,
-    major: cleanMajor,
-    category: recs.category,
-    level: assessment.level,
-    percentileRange: assessment.percentileRange,
-    reachCount: recs.counts.reach,
-    targetCount: recs.counts.target,
-    safetyCount: recs.counts.safety,
-    totalCount: recs.counts.total,
+    effectiveScore,
+    englishGrade: safeEnglishGrade,
+    englishPenalty,
+    major: normalizedMajor || major,
+    category,
+    level,
+    percentileEstimate,
+    subjectProfile,
+    totalEvaluated: evaluated.length,
+    supportableCount: supportableList.length,
+    safetyCount: safetyList.length,
+    targetCount: targetList.length,
+    reachCount: reachList.length,
+    challengeCount: challengeList.length,
+    featured,
+    recommendedPortfolios,
+    strategyPoints,
+    dataSources: DATA_SOURCES,
+    universities: evaluated,
   };
 
-  const markdown = buildSummaryMarkdown({
-    scoreNum,
-    major: cleanMajor,
-    category: recs.category,
-    assessment,
-    recs,
-    tips,
-  });
+  const summaryLines = [
+    `[UniPick 2025 정시 입시 분석 리포트]`,
+    `- 기준 점수: 표준점수 합 ${scoreNum}점 (영어 ${safeEnglishGrade}등급 기준 평균 환산 ${effectiveScore}점)`,
+    `- 희망 전공: ${meta.major} (${category}계열) · 위치: ${level} (${percentileEstimate})`,
+    `- 지원 가능 대학: 총 ${supportableList.length}개교 (안정 ${safetyList.length} · 적정 ${targetList.length} · 소신 ${reachList.length})`,
+  ];
+
+  const medicalNotice = medicalRequested
+    ? '의·치·한·약·수의학 계열은 대학 평균 합격선보다 훨씬 높은 최상위권 커트라인(400~422점)이 형성되므로 학과별 세분화 보정 합격선을 기준으로 산출되었습니다.'
+    : null;
 
   return {
     meta,
-    assessment,
-    medicalNotice,
+    markdown: summaryLines.join('\n'),
     structured: {
-      reach: recs.reach,
-      target: recs.target,
-      safety: recs.safety,
-      challenge: recs.challenge,
+      safety: safetyList,
+      target: targetList,
+      reach: reachList,
+      challenge: challengeList,
     },
-    allEvaluated: recs.allEvaluated,
-    tips,
-    guide,
-    markdown,
-    dataSources: DATA_SOURCES,
+    allEvaluated: evaluated,
+    guide: strategyPoints,
+    medicalNotice,
   };
 }
 
 module.exports = {
+  analyzeAdmission,
   normalizeToKorean,
   getCategory,
   isMedicalTrack,
   findMatchingDepartment,
+  getAdjustedCutoffRange,
+  analyzeSubjectProfile,
   calculateProbability,
-  classifyByProbability,
-  getScoreAssessment,
-  generateRecommendations,
-  generateStrategyTips,
-  generateAdmissionsGuide,
-  analyzeAdmission,
+  classifySupportTier,
+  buildRecommendedPortfolios,
   VALID_CATEGORIES,
+  ENGLISH_PENALTY_MAP,
 };

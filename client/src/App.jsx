@@ -209,6 +209,8 @@ function AppShell() {
             <AccountModal
               key="account-modal"
               onClose={() => setAccountOpen(false)}
+              onApplyTargetProfile={handleJumpToAnalysis}
+              onNavigate={handleNavigate}
             />
           )}
         </AnimatePresence>
