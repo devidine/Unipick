@@ -1,0 +1,864 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>UniPick — 데이터 기반 대입 지원 전략</title>
+    <meta name="description" content="UniPick은 서울권 주요 대학의 입시 데이터를 분석하여 수능 성적에 최적화된 맞춤형 지원 전략을 제공합니다.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <style>
+        :root {
+            --bg-primary: #0a0a0f;
+            --bg-secondary: #12121a;
+            --bg-card: rgba(255, 255, 255, 0.03);
+            --bg-card-hover: rgba(255, 255, 255, 0.06);
+            --bg-glass: rgba(18, 18, 30, 0.8);
+            --border-subtle: rgba(255, 255, 255, 0.06);
+            --border-accent: rgba(99, 102, 241, 0.3);
+            --text-primary: #f0f0f5;
+            --text-secondary: #8b8b9e;
+            --text-muted: #55556a;
+            --accent-indigo: #6366f1;
+            --accent-violet: #8b5cf6;
+            --accent-cyan: #06b6d4;
+            --accent-emerald: #10b981;
+            --accent-amber: #f59e0b;
+            --accent-rose: #f43f5e;
+            --gradient-primary: linear-gradient(135deg, #6366f1 0%, #8b5cf6 50%, #a78bfa 100%);
+            --gradient-reach: linear-gradient(135deg, rgba(244,63,94,0.12) 0%, rgba(251,146,60,0.08) 100%);
+            --gradient-target: linear-gradient(135deg, rgba(99,102,241,0.12) 0%, rgba(139,92,246,0.08) 100%);
+            --gradient-safety: linear-gradient(135deg, rgba(16,185,129,0.12) 0%, rgba(6,182,212,0.08) 100%);
+            --glow-indigo: 0 0 40px rgba(99,102,241,0.15);
+            --radius-sm: 8px; --radius-md: 12px; --radius-lg: 16px; --radius-xl: 24px; --radius-full: 9999px;
+            --transition-fast: all 0.2s cubic-bezier(0.4,0,0.2,1);
+            --transition-smooth: all 0.5s cubic-bezier(0.16,1,0.3,1);
+            --sidebar-width: 300px;
+        }
+        *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+        html { font-size: 16px; scroll-behavior: smooth; -webkit-font-smoothing: antialiased; }
+        body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; background: var(--bg-primary); color: var(--text-primary); min-height: 100vh; overflow-x: hidden; }
+
+        /* ── Background ── */
+        .bg-orbs { position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden; }
+        .bg-orbs .orb { position: absolute; border-radius: 50%; filter: blur(100px); opacity: 0.3; animation: orbFloat 20s ease-in-out infinite; }
+        .bg-orbs .orb:nth-child(1) { width: 600px; height: 600px; background: radial-gradient(circle, rgba(99,102,241,0.3), transparent 70%); top: -10%; left: -10%; animation-duration: 25s; }
+        .bg-orbs .orb:nth-child(2) { width: 500px; height: 500px; background: radial-gradient(circle, rgba(139,92,246,0.25), transparent 70%); bottom: -15%; right: -5%; animation-duration: 30s; animation-delay: -5s; }
+        .bg-orbs .orb:nth-child(3) { width: 400px; height: 400px; background: radial-gradient(circle, rgba(6,182,212,0.2), transparent 70%); top: 40%; left: 50%; animation-duration: 22s; animation-delay: -10s; }
+        @keyframes orbFloat { 0%,100%{transform:translate(0,0) scale(1)} 25%{transform:translate(40px,-30px) scale(1.05)} 50%{transform:translate(-20px,50px) scale(0.95)} 75%{transform:translate(30px,20px) scale(1.02)} }
+
+        /* ── Sidebar ── */
+        .sidebar-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 999; opacity: 0; pointer-events: none; transition: opacity 0.3s; }
+        .sidebar-overlay.active { opacity: 1; pointer-events: all; }
+        .sidebar { position: fixed; left: 0; top: 0; bottom: 0; width: var(--sidebar-width); background: rgba(12,12,20,0.95); backdrop-filter: blur(30px); border-right: 1px solid var(--border-subtle); z-index: 1000; transform: translateX(-100%); transition: transform 0.4s cubic-bezier(0.16,1,0.3,1); display: flex; flex-direction: column; }
+        .sidebar.open { transform: translateX(0); }
+        .sidebar-header { padding: 20px; border-bottom: 1px solid var(--border-subtle); display: flex; justify-content: space-between; align-items: center; }
+        .sidebar-header h3 { font-size: 15px; font-weight: 700; }
+        .sidebar-close { background: none; border: none; color: var(--text-secondary); font-size: 20px; cursor: pointer; padding: 4px 8px; border-radius: var(--radius-sm); transition: var(--transition-fast); }
+        .sidebar-close:hover { background: rgba(255,255,255,0.05); color: var(--text-primary); }
+        .sidebar-user { padding: 16px 20px; border-bottom: 1px solid var(--border-subtle); }
+        .sidebar-user-info { display: flex; align-items: center; gap: 12px; }
+        .sidebar-avatar { width: 36px; height: 36px; border-radius: 50%; background: var(--gradient-primary); display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 700; flex-shrink: 0; }
+        .sidebar-username { font-size: 14px; font-weight: 600; }
+        .sidebar-joined { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+        .sidebar-list { flex: 1; overflow-y: auto; padding: 12px; }
+        .sidebar-list-title { font-size: 11px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; padding: 8px 8px 4px; }
+        .sidebar-item { padding: 12px 14px; border-radius: var(--radius-md); cursor: pointer; transition: var(--transition-fast); margin-bottom: 4px; border: 1px solid transparent; }
+        .sidebar-item:hover { background: rgba(255,255,255,0.04); border-color: var(--border-subtle); }
+        .sidebar-item-title { font-size: 13px; font-weight: 600; margin-bottom: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .sidebar-item-meta { font-size: 11px; color: var(--text-muted); display: flex; gap: 8px; }
+        .sidebar-empty { padding: 40px 20px; text-align: center; color: var(--text-muted); font-size: 13px; line-height: 1.6; }
+        .sidebar-footer { padding: 16px 20px; border-top: 1px solid var(--border-subtle); }
+        .sidebar-footer-btn { width: 100%; padding: 10px; background: rgba(244,63,94,0.1); border: 1px solid rgba(244,63,94,0.2); border-radius: var(--radius-sm); color: var(--accent-rose); font-size: 13px; font-weight: 500; cursor: pointer; font-family: 'Inter', sans-serif; transition: var(--transition-fast); }
+        .sidebar-footer-btn:hover { background: rgba(244,63,94,0.2); }
+        .sidebar-login-prompt { padding: 40px 20px; text-align: center; }
+        .sidebar-login-prompt p { font-size: 13px; color: var(--text-secondary); margin-bottom: 16px; line-height: 1.5; }
+        .sidebar-login-btn { padding: 10px 24px; background: var(--gradient-primary); border: none; border-radius: var(--radius-sm); color: white; font-size: 13px; font-weight: 600; cursor: pointer; font-family: 'Inter', sans-serif; transition: var(--transition-fast); }
+        .sidebar-login-btn:hover { transform: translateY(-1px); box-shadow: 0 4px 15px rgba(99,102,241,0.3); }
+
+        /* ── Auth Modal ── */
+        .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 2000; display: none; align-items: center; justify-content: center; padding: 20px; }
+        .modal-overlay.active { display: flex; }
+        .modal { width: 100%; max-width: 400px; background: rgba(18,18,30,0.95); backdrop-filter: blur(30px); border: 1px solid var(--border-subtle); border-radius: var(--radius-xl); padding: 36px; box-shadow: 0 20px 60px rgba(0,0,0,0.5); animation: modalIn 0.3s ease-out; }
+        @keyframes modalIn { from { opacity: 0; transform: scale(0.95) translateY(10px); } to { opacity: 1; transform: scale(1) translateY(0); } }
+        .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
+        .modal-title { font-size: 20px; font-weight: 800; }
+        .modal-close { background: none; border: none; color: var(--text-secondary); font-size: 20px; cursor: pointer; padding: 4px; }
+        .modal-tabs { display: flex; gap: 4px; margin-bottom: 24px; background: rgba(255,255,255,0.03); border-radius: var(--radius-sm); padding: 3px; }
+        .modal-tab { flex: 1; padding: 10px; text-align: center; font-size: 13px; font-weight: 600; color: var(--text-secondary); background: none; border: none; border-radius: 6px; cursor: pointer; font-family: 'Inter', sans-serif; transition: var(--transition-fast); }
+        .modal-tab.active { background: var(--accent-indigo); color: white; }
+        .modal-input { width: 100%; padding: 13px 16px; background: rgba(255,255,255,0.04); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); color: var(--text-primary); font-size: 14px; font-family: 'Inter', sans-serif; outline: none; transition: var(--transition-fast); margin-bottom: 12px; }
+        .modal-input::placeholder { color: var(--text-muted); }
+        .modal-input:focus { border-color: var(--accent-indigo); box-shadow: 0 0 0 3px rgba(99,102,241,0.1); }
+        .modal-submit { width: 100%; padding: 14px; margin-top: 8px; background: var(--gradient-primary); border: none; border-radius: var(--radius-sm); color: white; font-size: 15px; font-weight: 700; cursor: pointer; font-family: 'Inter', sans-serif; transition: var(--transition-fast); }
+        .modal-submit:hover { transform: translateY(-1px); box-shadow: 0 8px 25px rgba(99,102,241,0.3); }
+        .modal-submit:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+        .modal-error { font-size: 12px; color: var(--accent-rose); margin-top: 8px; min-height: 18px; }
+
+        /* ── Top Nav ── */
+        .top-nav { position: sticky; top: 0; z-index: 100; display: flex; justify-content: space-between; align-items: center; padding: 14px 24px; background: rgba(10,10,15,0.75); backdrop-filter: blur(20px) saturate(1.5); border-bottom: 1px solid var(--border-subtle); }
+        .nav-left { display: flex; align-items: center; gap: 12px; }
+        .nav-menu-btn { background: none; border: 1px solid var(--border-subtle); color: var(--text-secondary); width: 36px; height: 36px; border-radius: var(--radius-sm); cursor: pointer; font-size: 16px; display: flex; align-items: center; justify-content: center; transition: var(--transition-fast); }
+        .nav-menu-btn:hover { background: rgba(255,255,255,0.05); color: var(--text-primary); border-color: var(--border-accent); }
+        .nav-logo { font-size: 20px; font-weight: 800; letter-spacing: -0.5px; background: var(--gradient-primary); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+        .nav-right { display: flex; align-items: center; gap: 10px; }
+        .nav-auth-btn { padding: 8px 16px; border-radius: var(--radius-sm); font-size: 13px; font-weight: 600; cursor: pointer; font-family: 'Inter', sans-serif; transition: var(--transition-fast); }
+        .nav-login-btn { background: none; border: 1px solid var(--border-subtle); color: var(--text-secondary); }
+        .nav-login-btn:hover { border-color: var(--accent-indigo); color: var(--accent-indigo); }
+        .nav-register-btn { background: var(--gradient-primary); border: none; color: white; }
+        .nav-register-btn:hover { box-shadow: 0 4px 15px rgba(99,102,241,0.3); }
+        .nav-user-chip { display: flex; align-items: center; gap: 8px; padding: 6px 14px; background: rgba(99,102,241,0.08); border: 1px solid rgba(99,102,241,0.15); border-radius: var(--radius-full); font-size: 13px; font-weight: 500; color: var(--accent-indigo); cursor: pointer; transition: var(--transition-fast); }
+        .nav-user-chip:hover { background: rgba(99,102,241,0.12); }
+        .nav-user-avatar { width: 24px; height: 24px; border-radius: 50%; background: var(--gradient-primary); display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 700; color: white; }
+
+        /* ── App Container ── */
+        .app-container { position: relative; z-index: 2; min-height: 100vh; display: flex; flex-direction: column; }
+
+        /* ── Hero ── */
+        .hero-section { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 60px 24px; text-align: center; transition: var(--transition-smooth); min-height: calc(100vh - 58px); }
+        .hero-section.hidden { opacity: 0; transform: translateY(-30px) scale(0.97); pointer-events: none; position: absolute; width: 100%; }
+        .hero-eyebrow { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 500; color: var(--accent-indigo); padding: 6px 16px; background: rgba(99,102,241,0.08); border: 1px solid rgba(99,102,241,0.15); border-radius: var(--radius-full); margin-bottom: 24px; animation: fadeInDown 0.8s ease-out; }
+        .hero-eyebrow .pulse-dot { width: 6px; height: 6px; background: var(--accent-emerald); border-radius: 50%; animation: pulse 2s ease-in-out infinite; }
+        .hero-title { font-size: clamp(30px, 5vw, 50px); font-weight: 900; line-height: 1.2; letter-spacing: -1.5px; margin-bottom: 16px; animation: fadeInDown 0.8s ease-out 0.1s both; }
+        .hero-title .gradient-text { background: var(--gradient-primary); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+        .hero-subtitle { font-size: 15px; color: var(--text-secondary); line-height: 1.6; max-width: 480px; margin-bottom: 48px; animation: fadeInDown 0.8s ease-out 0.2s both; }
+        .trust-badges { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; margin-bottom: 36px; animation: fadeInDown 0.8s ease-out 0.25s both; }
+        .trust-badge { display: inline-flex; align-items: center; gap: 6px; padding: 6px 14px; background: rgba(16,185,129,0.06); border: 1px solid rgba(16,185,129,0.12); border-radius: var(--radius-full); font-size: 12px; color: var(--accent-emerald); font-weight: 500; }
+
+        /* ── Input Card ── */
+        .input-card { width: 100%; max-width: 520px; background: var(--bg-card); border: 1px solid var(--border-subtle); border-radius: var(--radius-xl); padding: 32px; backdrop-filter: blur(20px); box-shadow: var(--glow-indigo); animation: fadeInUp 0.8s ease-out 0.3s both; }
+        .input-row { margin-bottom: 18px; }
+        .input-label { display: block; font-size: 13px; font-weight: 600; color: var(--text-secondary); margin-bottom: 8px; }
+        .input-field { width: 100%; padding: 13px 16px; background: rgba(255,255,255,0.04); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); color: var(--text-primary); font-size: 14px; font-family: 'Inter', sans-serif; outline: none; transition: var(--transition-fast); }
+        .input-field::placeholder { color: var(--text-muted); }
+        .input-field:focus { border-color: var(--accent-indigo); box-shadow: 0 0 0 3px rgba(99,102,241,0.1); }
+        .input-hint { font-size: 11px; color: var(--text-muted); margin-top: 6px; }
+        .category-selector { display: flex; gap: 6px; margin-top: 8px; }
+        .category-chip { flex: 1; padding: 10px 0; text-align: center; font-size: 12px; font-weight: 500; color: var(--text-secondary); background: rgba(255,255,255,0.03); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); cursor: pointer; transition: var(--transition-fast); }
+        .category-chip:hover { background: rgba(99,102,241,0.06); border-color: rgba(99,102,241,0.2); }
+        .category-chip.active { background: rgba(99,102,241,0.1); border-color: var(--accent-indigo); color: var(--accent-indigo); font-weight: 600; }
+        .submit-btn { width: 100%; padding: 15px; margin-top: 8px; border: none; border-radius: var(--radius-md); background: var(--gradient-primary); color: white; font-size: 15px; font-weight: 700; font-family: 'Inter', sans-serif; cursor: pointer; transition: var(--transition-fast); }
+        .submit-btn:hover { transform: translateY(-2px); box-shadow: 0 8px 30px rgba(99,102,241,0.35); }
+        .submit-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+
+        /* ── Loading ── */
+        .loading-section { flex: 1; display: none; flex-direction: column; align-items: center; justify-content: center; padding: 60px 24px; min-height: calc(100vh - 58px); text-align: center; }
+        .loading-section.active { display: flex; }
+        .loading-spinner { width: 56px; height: 56px; position: relative; margin-bottom: 28px; }
+        .loading-spinner .ring { position: absolute; inset: 0; border-radius: 50%; border: 3px solid transparent; }
+        .loading-spinner .ring:nth-child(1) { border-top-color: var(--accent-indigo); animation: spin 1.2s linear infinite; }
+        .loading-spinner .ring:nth-child(2) { inset: 6px; border-right-color: var(--accent-violet); animation: spin 1.8s linear infinite reverse; }
+        .loading-spinner .ring:nth-child(3) { inset: 12px; border-bottom-color: var(--accent-cyan); animation: spin 2.4s linear infinite; }
+        .loading-text { font-size: 17px; font-weight: 600; margin-bottom: 8px; }
+        .loading-subtext { font-size: 13px; color: var(--text-secondary); animation: pulse 2s ease-in-out infinite; }
+        .loading-steps { margin-top: 28px; display: flex; flex-direction: column; gap: 10px; width: 100%; max-width: 340px; }
+        .loading-step { display: flex; align-items: center; gap: 12px; padding: 11px 14px; background: var(--bg-card); border-radius: var(--radius-md); border: 1px solid var(--border-subtle); opacity: 0; transform: translateX(-20px); transition: var(--transition-smooth); }
+        .loading-step.visible { opacity: 1; transform: translateX(0); }
+        .loading-step .step-icon { width: 26px; height: 26px; display: flex; align-items: center; justify-content: center; border-radius: 50%; background: rgba(99,102,241,0.1); font-size: 13px; flex-shrink: 0; }
+        .loading-step .step-text { font-size: 12px; color: var(--text-secondary); }
+        .loading-step.done .step-icon { background: rgba(16,185,129,0.15); }
+        .loading-step.done .step-text { color: var(--accent-emerald); }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.5} }
+
+        /* ── Results ── */
+        .results-section { flex: 1; display: none; flex-direction: column; padding: 32px 24px 80px; max-width: 900px; margin: 0 auto; width: 100%; }
+        .results-section.active { display: flex; }
+        .back-btn { display: inline-flex; align-items: center; gap: 8px; padding: 9px 16px; background: var(--bg-card); border: 1px solid var(--border-subtle); border-radius: var(--radius-full); color: var(--text-secondary); font-size: 13px; font-weight: 500; font-family: 'Inter', sans-serif; cursor: pointer; transition: var(--transition-fast); margin-bottom: 24px; align-self: flex-start; }
+        .back-btn:hover { background: var(--bg-card-hover); color: var(--text-primary); }
+
+        /* Result Header */
+        .result-header { margin-bottom: 24px; padding: 24px; background: var(--bg-card); border: 1px solid var(--border-subtle); border-radius: var(--radius-xl); animation: fadeInUp 0.6s ease-out; }
+        .result-header h2 { font-size: 20px; font-weight: 800; margin-bottom: 12px; letter-spacing: -0.5px; }
+        .result-meta-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }
+        .meta-chip { display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px; background: rgba(99,102,241,0.08); border: 1px solid rgba(99,102,241,0.15); border-radius: var(--radius-full); font-size: 12px; font-weight: 500; color: var(--accent-indigo); }
+        .result-assessment { font-size: 13px; line-height: 1.7; color: var(--text-secondary); }
+
+        /* Strategy Cards */
+        .strategy-grid { display: flex; flex-direction: column; gap: 16px; margin-bottom: 24px; }
+        .strategy-card { background: var(--bg-card); border: 1px solid var(--border-subtle); border-radius: var(--radius-xl); padding: 24px; transition: var(--transition-fast); opacity: 0; transform: translateY(20px); animation: fadeInUp 0.6s ease-out forwards; }
+        .strategy-card:nth-child(1) { animation-delay: 0.1s; }
+        .strategy-card:nth-child(2) { animation-delay: 0.25s; }
+        .strategy-card:nth-child(3) { animation-delay: 0.4s; }
+        .strategy-card:hover { background: var(--bg-card-hover); transform: translateY(-2px); }
+        .strategy-card.reach { border-left: 3px solid var(--accent-rose); background: var(--gradient-reach); }
+        .strategy-card.target { border-left: 3px solid var(--accent-indigo); background: var(--gradient-target); }
+        .strategy-card.safety { border-left: 3px solid var(--accent-emerald); background: var(--gradient-safety); }
+        .strategy-card-header { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+        .strategy-icon { width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; font-size: 18px; border-radius: var(--radius-md); flex-shrink: 0; }
+        .reach .strategy-icon { background: rgba(244,63,94,0.15); }
+        .target .strategy-icon { background: rgba(99,102,241,0.15); }
+        .safety .strategy-icon { background: rgba(16,185,129,0.15); }
+        .strategy-card-title { font-size: 15px; font-weight: 700; }
+        .strategy-card-subtitle { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+        .reach .strategy-card-subtitle { color: rgba(244,63,94,0.7); }
+        .target .strategy-card-subtitle { color: rgba(99,102,241,0.7); }
+        .safety .strategy-card-subtitle { color: rgba(16,185,129,0.7); }
+
+        .uni-item { display: flex; align-items: flex-start; gap: 14px; padding: 14px; background: rgba(255,255,255,0.02); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); margin-bottom: 8px; transition: var(--transition-fast); }
+        .uni-item:last-child { margin-bottom: 0; }
+        .uni-item:hover { background: rgba(255,255,255,0.04); }
+        .uni-rank { width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; border-radius: 50%; font-size: 12px; font-weight: 700; flex-shrink: 0; }
+        .reach .uni-rank { background: rgba(244,63,94,0.15); color: var(--accent-rose); }
+        .target .uni-rank { background: rgba(99,102,241,0.15); color: var(--accent-indigo); }
+        .safety .uni-rank { background: rgba(16,185,129,0.15); color: var(--accent-emerald); }
+        .uni-info { flex: 1; min-width: 0; }
+        .uni-name { font-size: 14px; font-weight: 700; margin-bottom: 3px; }
+        .uni-dept { font-size: 12px; color: var(--text-secondary); margin-bottom: 6px; }
+        .uni-note { font-size: 11px; color: var(--text-muted); line-height: 1.5; padding: 6px 10px; background: rgba(255,255,255,0.02); border-radius: var(--radius-sm); border-left: 2px solid var(--border-subtle); }
+        .uni-source { font-size: 10px; color: var(--text-muted); margin-top: 6px; opacity: 0.7; }
+        .uni-prob { display: flex; flex-direction: column; align-items: flex-end; flex-shrink: 0; gap: 3px; }
+        .prob-value { font-size: 18px; font-weight: 800; letter-spacing: -0.5px; }
+        .reach .prob-value { color: var(--accent-rose); }
+        .target .prob-value { color: var(--accent-indigo); }
+        .safety .prob-value { color: var(--accent-emerald); }
+        .prob-label { font-size: 10px; color: var(--text-muted); }
+        .prob-bar { width: 56px; height: 4px; background: rgba(255,255,255,0.06); border-radius: var(--radius-full); overflow: hidden; }
+        .prob-bar-fill { height: 100%; border-radius: var(--radius-full); transition: width 1.5s cubic-bezier(0.16,1,0.3,1); width: 0; }
+        .reach .prob-bar-fill { background: var(--accent-rose); }
+        .target .prob-bar-fill { background: var(--accent-indigo); }
+        .safety .prob-bar-fill { background: var(--accent-emerald); }
+        .no-data { padding: 20px; text-align: center; color: var(--text-muted); font-size: 13px; }
+
+        /* Tips */
+        .tips-card { background: var(--bg-card); border: 1px solid var(--border-subtle); border-radius: var(--radius-xl); padding: 24px; margin-bottom: 20px; opacity: 0; animation: fadeInUp 0.6s ease-out 0.55s forwards; }
+        .tips-card-header { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; font-size: 15px; font-weight: 700; }
+        .tips-content { font-size: 13px; line-height: 1.8; color: var(--text-secondary); }
+        .tips-content p { margin-bottom: 10px; }
+        .tips-content strong { color: var(--text-primary); }
+
+        /* Data Source Card */
+        .source-card { background: rgba(6,182,212,0.04); border: 1px solid rgba(6,182,212,0.12); border-radius: var(--radius-xl); padding: 24px; margin-bottom: 20px; opacity: 0; animation: fadeInUp 0.6s ease-out 0.6s forwards; }
+        .source-card-header { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; font-size: 15px; font-weight: 700; color: var(--accent-cyan); }
+        .source-list { list-style: none; }
+        .source-list li { font-size: 12px; color: var(--text-secondary); padding: 6px 0; border-bottom: 1px solid var(--border-subtle); display: flex; align-items: center; gap: 8px; }
+        .source-list li:last-child { border-bottom: none; }
+        .source-list li::before { content: '✓'; color: var(--accent-cyan); font-weight: 700; font-size: 11px; }
+
+        /* Disclaimer */
+        .disclaimer { padding: 18px 20px; background: rgba(245,158,11,0.05); border: 1px solid rgba(245,158,11,0.15); border-radius: var(--radius-md); font-size: 12px; line-height: 1.6; color: rgba(245,158,11,0.8); margin-bottom: 24px; opacity: 0; animation: fadeInUp 0.6s ease-out 0.65s forwards; }
+
+        /* ── Chat Section ── */
+        .chat-section { background: var(--bg-card); border: 1px solid var(--border-subtle); border-radius: var(--radius-xl); overflow: hidden; opacity: 0; animation: fadeInUp 0.6s ease-out 0.7s forwards; }
+        .chat-header { padding: 16px 20px; border-bottom: 1px solid var(--border-subtle); display: flex; align-items: center; justify-content: space-between; }
+        .chat-header h3 { font-size: 14px; font-weight: 700; display: flex; align-items: center; gap: 8px; }
+        .chat-login-hint { font-size: 11px; color: var(--text-muted); }
+        .chat-messages { height: 280px; overflow-y: auto; padding: 16px 20px; display: flex; flex-direction: column; gap: 12px; }
+        .chat-empty { text-align: center; padding: 40px 20px; color: var(--text-muted); font-size: 13px; line-height: 1.6; }
+        .chat-msg { max-width: 85%; padding: 12px 16px; border-radius: var(--radius-lg); font-size: 13px; line-height: 1.6; animation: fadeInUp 0.3s ease-out; }
+        .chat-msg.user { background: rgba(99,102,241,0.15); border: 1px solid rgba(99,102,241,0.2); align-self: flex-end; border-bottom-right-radius: 4px; }
+        .chat-msg.assistant { background: rgba(255,255,255,0.04); border: 1px solid var(--border-subtle); align-self: flex-start; border-bottom-left-radius: 4px; }
+        .chat-msg.assistant p { margin-bottom: 8px; }
+        .chat-msg.assistant p:last-child { margin-bottom: 0; }
+        .chat-msg.assistant strong { color: var(--text-primary); }
+        .chat-input-area { padding: 14px 16px; border-top: 1px solid var(--border-subtle); display: flex; gap: 10px; }
+        .chat-input { flex: 1; padding: 11px 14px; background: rgba(255,255,255,0.04); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); color: var(--text-primary); font-size: 13px; font-family: 'Inter', sans-serif; outline: none; transition: var(--transition-fast); }
+        .chat-input:focus { border-color: var(--accent-indigo); }
+        .chat-input::placeholder { color: var(--text-muted); }
+        .chat-send-btn { padding: 10px 18px; background: var(--gradient-primary); border: none; border-radius: var(--radius-sm); color: white; font-size: 13px; font-weight: 600; cursor: pointer; font-family: 'Inter', sans-serif; transition: var(--transition-fast); flex-shrink: 0; }
+        .chat-send-btn:hover { box-shadow: 0 4px 15px rgba(99,102,241,0.3); }
+        .chat-send-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+        /* ── Animations ── */
+        @keyframes fadeInDown { from{opacity:0;transform:translateY(-20px)} to{opacity:1;transform:translateY(0)} }
+        @keyframes fadeInUp { from{opacity:0;transform:translateY(20px)} to{opacity:1;transform:translateY(0)} }
+        @keyframes shake { 0%,100%{transform:translateX(0)} 20%{transform:translateX(-8px)} 40%{transform:translateX(8px)} 60%{transform:translateX(-4px)} 80%{transform:translateX(4px)} }
+
+        /* ── Scrollbar ── */
+        ::-webkit-scrollbar { width: 5px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.15); }
+
+        /* ── Responsive ── */
+        @media (max-width: 1024px) {
+            .top-nav { padding: 12px 20px; }
+        }
+        @media (max-width: 768px) {
+            .top-nav { padding: 10px 16px; }
+            .nav-register-btn { display: none; }
+            .hero-section { padding: 40px 16px; min-height: auto; }
+            .hero-title { letter-spacing: -1px; }
+            .trust-badges { gap: 8px; }
+            .trust-badge { font-size: 11px; padding: 5px 10px; }
+            .input-card { padding: 24px; }
+            .results-section { padding: 20px 16px 60px; }
+            .strategy-card { padding: 18px; }
+            .uni-item { flex-direction: column; gap: 10px; }
+            .uni-prob { flex-direction: row; align-items: center; width: 100%; gap: 10px; }
+            .prob-bar { flex: 1; }
+            .result-header { padding: 18px; }
+            .result-header h2 { font-size: 17px; }
+            .chat-messages { height: 220px; }
+            .sidebar { width: 100%; }
+        }
+        @media (max-width: 480px) {
+            .hero-title { font-size: 26px; }
+            .hero-subtitle { font-size: 13px; }
+            .category-selector { flex-direction: column; gap: 6px; }
+            .meta-chip { font-size: 11px; padding: 4px 8px; }
+            .input-card { padding: 20px; }
+            .strategy-card { padding: 16px; }
+            .modal { padding: 24px; margin: 16px; }
+        }
+        @media (min-width: 1200px) {
+            .results-section { max-width: 960px; }
+        }
+    </style>
+</head>
+<body>
+    <div class="bg-orbs"><div class="orb"></div><div class="orb"></div><div class="orb"></div></div>
+
+    <!-- Sidebar Overlay -->
+    <div class="sidebar-overlay" id="sidebarOverlay"></div>
+
+    <!-- Sidebar -->
+    <aside class="sidebar" id="sidebar">
+        <div class="sidebar-header">
+            <h3>📋 컨설팅 내역</h3>
+            <button class="sidebar-close" id="sidebarClose">✕</button>
+        </div>
+        <div id="sidebarContent">
+            <div class="sidebar-login-prompt" id="sidebarLoginPrompt">
+                <p>로그인하면 컨설팅 내역을<br>저장하고 다시 볼 수 있어요.</p>
+                <button class="sidebar-login-btn" id="sidebarLoginBtn">로그인하기</button>
+            </div>
+        </div>
+        <div class="sidebar-user" id="sidebarUser" style="display:none;">
+            <div class="sidebar-user-info">
+                <div class="sidebar-avatar" id="sidebarAvatar"></div>
+                <div>
+                    <div class="sidebar-username" id="sidebarUsername"></div>
+                    <div class="sidebar-joined" id="sidebarJoined"></div>
+                </div>
+            </div>
+        </div>
+        <div class="sidebar-list" id="sidebarList" style="display:none;">
+            <div class="sidebar-list-title">최근 분석 내역</div>
+            <div id="sidebarItems"></div>
+        </div>
+        <div class="sidebar-footer" id="sidebarFooter" style="display:none;">
+            <button class="sidebar-footer-btn" id="logoutBtn">로그아웃</button>
+        </div>
+    </aside>
+
+    <!-- Auth Modal -->
+    <div class="modal-overlay" id="authModal">
+        <div class="modal">
+            <div class="modal-header">
+                <div class="modal-title" id="modalTitle">로그인</div>
+                <button class="modal-close" id="modalClose">✕</button>
+            </div>
+            <div class="modal-tabs">
+                <button class="modal-tab active" data-tab="login">로그인</button>
+                <button class="modal-tab" data-tab="register">회원가입</button>
+            </div>
+            <form id="authForm">
+                <input type="text" class="modal-input" id="authUsername" placeholder="아이디" autocomplete="username" required>
+                <input type="password" class="modal-input" id="authPassword" placeholder="비밀번호" autocomplete="current-password" required>
+                <input type="text" class="modal-input" id="authDisplayName" placeholder="표시 이름 (선택)" style="display:none;" autocomplete="name">
+                <button type="submit" class="modal-submit" id="authSubmitBtn">로그인</button>
+            </form>
+            <div class="modal-error" id="authError"></div>
+        </div>
+    </div>
+
+    <div class="app-container">
+        <!-- Nav -->
+        <nav class="top-nav">
+            <div class="nav-left">
+                <button class="nav-menu-btn" id="menuBtn">☰</button>
+                <span class="nav-logo">UniPick</span>
+            </div>
+            <div class="nav-right" id="navRight">
+                <button class="nav-auth-btn nav-login-btn" id="navLoginBtn">로그인</button>
+                <button class="nav-auth-btn nav-register-btn" id="navRegisterBtn">회원가입</button>
+            </div>
+            <div class="nav-right" id="navUserArea" style="display:none;">
+                <div class="nav-user-chip" id="navUserChip">
+                    <div class="nav-user-avatar" id="navUserAvatar"></div>
+                    <span id="navUsername"></span>
+                </div>
+            </div>
+        </nav>
+
+        <!-- Hero -->
+        <section class="hero-section" id="heroSection">
+            <div class="hero-eyebrow"><span class="pulse-dot"></span> 2026학년도 정시 지원 전략 분석</div>
+            <h1 class="hero-title">데이터가 증명하는<br>나만의 <span class="gradient-text">합격 전략</span></h1>
+            <p class="hero-subtitle">서울권 주요 대학의 공식 입시 데이터를 분석하여,<br>당신의 수능 성적에 최적화된 지원 전략을 제안합니다.</p>
+            <div class="trust-badges">
+                <span class="trust-badge">✓ 2025학년도 입시 결과 기반</span>
+                <span class="trust-badge">✓ 서울권 21개 대학 분석</span>
+                <span class="trust-badge">✓ 대학 입학처 공식 자료</span>
+            </div>
+            <div class="input-card">
+                <div class="input-row">
+                    <label class="input-label" for="scoreInput">📝 수능 표준점수 합</label>
+                    <input type="number" id="scoreInput" class="input-field" placeholder="국어 + 수학 + 탐구1 + 탐구2 합산 점수 (예: 370)" min="200" max="450">
+                    <p class="input-hint">영어를 제외한 국어·수학·탐구(2과목) 표준점수의 합을 입력하세요.</p>
+                </div>
+                <div class="input-row">
+                    <label class="input-label" for="majorInput">🎓 희망 학과</label>
+                    <input type="text" id="majorInput" class="input-field" placeholder="예: 컴퓨터공학과, 경영학과, 디자인학과">
+                </div>
+                <div class="input-row">
+                    <label class="input-label">📂 계열 선택</label>
+                    <div class="category-selector" id="categorySelector">
+                        <div class="category-chip active" data-cat="auto">⚡ 자동 판별</div>
+                        <div class="category-chip" data-cat="인문">📚 인문</div>
+                        <div class="category-chip" data-cat="자연">🔬 자연</div>
+                        <div class="category-chip" data-cat="예체능">🎨 예체능</div>
+                    </div>
+                </div>
+                <button class="submit-btn" id="submitBtn">🚀 합격 전략 분석 시작</button>
+            </div>
+        </section>
+
+        <!-- Loading -->
+        <section class="loading-section" id="loadingSection">
+            <div class="loading-spinner"><div class="ring"></div><div class="ring"></div><div class="ring"></div></div>
+            <p class="loading-text">UniPick 분석 중...</p>
+            <p class="loading-subtext" id="loadingSubtext">성적 데이터를 처리하고 있습니다</p>
+            <div class="loading-steps" id="loadingSteps">
+                <div class="loading-step" data-step="1"><div class="step-icon">📊</div><div class="step-text">성적 데이터 수집 및 표준화</div></div>
+                <div class="loading-step" data-step="2"><div class="step-icon">🏫</div><div class="step-text">서울권 대학 커트라인 비교</div></div>
+                <div class="loading-step" data-step="3"><div class="step-icon">🎯</div><div class="step-text">합격 확률 산정 및 전략 수립</div></div>
+                <div class="loading-step" data-step="4"><div class="step-icon">✨</div><div class="step-text">맞춤형 리포트 생성</div></div>
+            </div>
+        </section>
+
+        <!-- Results -->
+        <section class="results-section" id="resultsSection">
+            <button class="back-btn" id="backBtn">← 새로운 분석</button>
+            <div id="resultsContent"></div>
+            <!-- Chat -->
+            <div class="chat-section" id="chatSection">
+                <div class="chat-header">
+                    <h3>💬 추가 질문하기</h3>
+                    <span class="chat-login-hint" id="chatLoginHint">로그인 시 대화 내역이 저장됩니다</span>
+                </div>
+                <div class="chat-messages" id="chatMessages">
+                    <div class="chat-empty">분석 결과에 대해 궁금한 점을 질문해보세요.<br>경쟁률, 반영비율, 교차지원, 장학금 등에 대해 답변해드립니다.</div>
+                </div>
+                <div class="chat-input-area">
+                    <input type="text" class="chat-input" id="chatInput" placeholder="예: 경쟁률이 어떻게 돼? / 교차지원 가능해?">
+                    <button class="chat-send-btn" id="chatSendBtn">전송</button>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <script>
+        // ═══════════════════════ STATE ═══════════════════════
+        let currentUser = null;
+        let authToken = localStorage.getItem('unipick_token');
+        let currentConsultationId = null;
+        let currentConsultationMeta = null;
+        let authMode = 'login';
+
+        // ═══════════════════════ DOM ═══════════════════════
+        const $ = id => document.getElementById(id);
+        const heroSection = $('heroSection');
+        const loadingSection = $('loadingSection');
+        const resultsSection = $('resultsSection');
+        const resultsContent = $('resultsContent');
+        const submitBtn = $('submitBtn');
+        const scoreInput = $('scoreInput');
+        const majorInput = $('majorInput');
+
+        // ═══════════════════════ INIT ═══════════════════════
+        if (authToken) {
+            fetchUser();
+        }
+
+        async function fetchUser() {
+            try {
+                const res = await fetch('/api/me', { headers: { 'Authorization': `Bearer ${authToken}` } });
+                const data = await res.json();
+                if (data.success) {
+                    currentUser = data.user;
+                    updateAuthUI();
+                    loadConsultations();
+                } else {
+                    localStorage.removeItem('unipick_token');
+                    authToken = null;
+                }
+            } catch (e) { console.error(e); }
+        }
+
+        function updateAuthUI() {
+            if (currentUser) {
+                $('navRight').style.display = 'none';
+                $('navUserArea').style.display = 'flex';
+                $('navUsername').textContent = currentUser.displayName || currentUser.username;
+                $('navUserAvatar').textContent = (currentUser.displayName || currentUser.username).charAt(0).toUpperCase();
+                $('sidebarLoginPrompt').style.display = 'none';
+                $('sidebarUser').style.display = 'block';
+                $('sidebarList').style.display = 'block';
+                $('sidebarFooter').style.display = 'block';
+                $('sidebarUsername').textContent = currentUser.displayName || currentUser.username;
+                $('sidebarAvatar').textContent = (currentUser.displayName || currentUser.username).charAt(0).toUpperCase();
+                $('sidebarJoined').textContent = '가입일: ' + new Date(currentUser.created_at).toLocaleDateString('ko-KR');
+                $('chatLoginHint').textContent = '대화 내역이 자동 저장됩니다';
+            } else {
+                $('navRight').style.display = 'flex';
+                $('navUserArea').style.display = 'none';
+                $('sidebarLoginPrompt').style.display = 'block';
+                $('sidebarUser').style.display = 'none';
+                $('sidebarList').style.display = 'none';
+                $('sidebarFooter').style.display = 'none';
+                $('chatLoginHint').textContent = '로그인 시 대화 내역이 저장됩니다';
+            }
+        }
+
+        async function loadConsultations() {
+            if (!authToken) return;
+            try {
+                const res = await fetch('/api/consultations', { headers: { 'Authorization': `Bearer ${authToken}` } });
+                const data = await res.json();
+                if (data.success) {
+                    const container = $('sidebarItems');
+                    if (data.consultations.length === 0) {
+                        container.innerHTML = '<div class="sidebar-empty">아직 분석 내역이 없습니다.<br>첫 번째 컨설팅을 시작해보세요!</div>';
+                    } else {
+                        container.innerHTML = data.consultations.map(c => `
+                            <div class="sidebar-item" data-id="${c.id}">
+                                <div class="sidebar-item-title">${c.major} · ${c.score}점</div>
+                                <div class="sidebar-item-meta">
+                                    <span>${c.level}</span>
+                                    <span>${new Date(c.created_at).toLocaleDateString('ko-KR')}</span>
+                                </div>
+                            </div>
+                        `).join('');
+                        container.querySelectorAll('.sidebar-item').forEach(item => {
+                            item.addEventListener('click', () => loadConsultation(item.dataset.id));
+                        });
+                    }
+                }
+            } catch (e) { console.error(e); }
+        }
+
+        async function loadConsultation(id) {
+            try {
+                const res = await fetch(`/api/consultations/${id}`, { headers: { 'Authorization': `Bearer ${authToken}` } });
+                const data = await res.json();
+                if (data.success) {
+                    const c = data.consultation;
+                    currentConsultationId = c.id;
+                    currentConsultationMeta = c.result_meta;
+                    closeSidebar();
+                    heroSection.classList.add('hidden');
+                    loadingSection.classList.remove('active');
+                    resultsSection.classList.add('active');
+                    showResultsFromData({
+                        markdown: c.result_markdown,
+                        meta: c.result_meta,
+                        structured: null,
+                        consultationId: c.id,
+                        dataSources: { primary: '한국대학교육협의회 대입정보포털(어디가)', secondary: '각 대학 입학처 공식 발표 자료', baseYear: 2025, note: '커트라인은 2025학년도 정시 합격자 표준점수 합 평균 기준' }
+                    });
+                    loadChatMessages(id);
+                }
+            } catch (e) { console.error(e); }
+        }
+
+        async function loadChatMessages(consultationId) {
+            if (!authToken) return;
+            try {
+                const res = await fetch(`/api/consultations/${consultationId}/messages`, { headers: { 'Authorization': `Bearer ${authToken}` } });
+                const data = await res.json();
+                if (data.success && data.messages.length > 0) {
+                    const container = $('chatMessages');
+                    container.innerHTML = '';
+                    data.messages.forEach(msg => addChatMessage(msg.role, msg.content));
+                }
+            } catch (e) { console.error(e); }
+        }
+
+        // ═══════════════════════ SIDEBAR ═══════════════════════
+        $('menuBtn').addEventListener('click', () => { $('sidebar').classList.add('open'); $('sidebarOverlay').classList.add('active'); });
+        function closeSidebar() { $('sidebar').classList.remove('open'); $('sidebarOverlay').classList.remove('active'); }
+        $('sidebarClose').addEventListener('click', closeSidebar);
+        $('sidebarOverlay').addEventListener('click', closeSidebar);
+
+        // ═══════════════════════ AUTH MODAL ═══════════════════════
+        function openAuthModal(mode) {
+            authMode = mode;
+            $('authModal').classList.add('active');
+            $('authError').textContent = '';
+            $('authUsername').value = '';
+            $('authPassword').value = '';
+            $('authDisplayName').value = '';
+            document.querySelectorAll('.modal-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === mode));
+            $('authDisplayName').style.display = mode === 'register' ? 'block' : 'none';
+            $('authSubmitBtn').textContent = mode === 'login' ? '로그인' : '가입하기';
+            $('modalTitle').textContent = mode === 'login' ? '로그인' : '회원가입';
+        }
+        $('navLoginBtn').addEventListener('click', () => openAuthModal('login'));
+        $('navRegisterBtn').addEventListener('click', () => openAuthModal('register'));
+        $('sidebarLoginBtn').addEventListener('click', () => { closeSidebar(); openAuthModal('login'); });
+        $('modalClose').addEventListener('click', () => $('authModal').classList.remove('active'));
+        $('authModal').addEventListener('click', (e) => { if (e.target === $('authModal')) $('authModal').classList.remove('active'); });
+        document.querySelectorAll('.modal-tab').forEach(tab => {
+            tab.addEventListener('click', () => openAuthModal(tab.dataset.tab));
+        });
+        $('navUserChip').addEventListener('click', () => { $('sidebar').classList.add('open'); $('sidebarOverlay').classList.add('active'); });
+
+        $('authForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const username = $('authUsername').value.trim();
+            const password = $('authPassword').value;
+            const displayName = $('authDisplayName').value.trim();
+            $('authError').textContent = '';
+            $('authSubmitBtn').disabled = true;
+
+            try {
+                const endpoint = authMode === 'login' ? '/api/login' : '/api/register';
+                const body = authMode === 'login' ? { username, password } : { username, password, displayName };
+                const res = await fetch(endpoint, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body)
+                });
+                const data = await res.json();
+                if (data.success) {
+                    authToken = data.token;
+                    localStorage.setItem('unipick_token', authToken);
+                    currentUser = data.user;
+                    $('authModal').classList.remove('active');
+                    updateAuthUI();
+                    loadConsultations();
+                } else {
+                    $('authError').textContent = data.error;
+                }
+            } catch (err) {
+                $('authError').textContent = '서버 연결에 실패했습니다.';
+            }
+            $('authSubmitBtn').disabled = false;
+        });
+
+        $('logoutBtn').addEventListener('click', () => {
+            localStorage.removeItem('unipick_token');
+            authToken = null;
+            currentUser = null;
+            updateAuthUI();
+            closeSidebar();
+        });
+
+        // ═══════════════════════ CATEGORY ═══════════════════════
+        let selectedCategory = 'auto';
+        document.querySelectorAll('.category-chip').forEach(chip => {
+            chip.addEventListener('click', () => {
+                document.querySelectorAll('.category-chip').forEach(c => c.classList.remove('active'));
+                chip.classList.add('active');
+                selectedCategory = chip.dataset.cat;
+            });
+        });
+
+        // ═══════════════════════ SUBMIT ═══════════════════════
+        submitBtn.addEventListener('click', async () => {
+            const score = scoreInput.value.trim();
+            const major = majorInput.value.trim();
+            if (!score || !major) { shakeElement(submitBtn); return; }
+            const scoreNum = parseInt(score, 10);
+            if (isNaN(scoreNum) || scoreNum < 200 || scoreNum > 450) { shakeElement(scoreInput); return; }
+
+            submitBtn.disabled = true;
+            heroSection.classList.add('hidden');
+            setTimeout(() => { loadingSection.classList.add('active'); animateLoadingSteps(); }, 400);
+
+            try {
+                const headers = { 'Content-Type': 'application/json' };
+                if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
+                const res = await fetch('/api/consult', { method: 'POST', headers, body: JSON.stringify({ score, major }) });
+                const data = await res.json();
+                if (data.success) {
+                    currentConsultationId = data.consultationId;
+                    currentConsultationMeta = data.meta;
+                    setTimeout(() => { showResultsFromData(data); if (currentUser) loadConsultations(); }, 2500);
+                } else {
+                    setTimeout(() => { alert(data.error); resetToHero(); }, 1000);
+                }
+            } catch (err) {
+                setTimeout(() => { alert('서버 연결 오류'); resetToHero(); }, 1000);
+            }
+        });
+
+        [scoreInput, majorInput].forEach(input => {
+            input.addEventListener('keydown', (e) => { if (e.key === 'Enter') submitBtn.click(); });
+        });
+
+        $('backBtn').addEventListener('click', resetToHero);
+
+        // ═══════════════════════ LOADING ═══════════════════════
+        function animateLoadingSteps() {
+            const steps = document.querySelectorAll('.loading-step');
+            const subtexts = ['성적 데이터를 처리하고 있습니다', '서울권 21개 대학 커트라인을 비교 중입니다', '합격 확률을 계산하고 전략을 수립 중입니다', '맞춤형 분석 리포트를 생성하고 있습니다'];
+            steps.forEach((step, i) => {
+                setTimeout(() => { step.classList.add('visible'); $('loadingSubtext').textContent = subtexts[i]; if (i > 0) steps[i-1].classList.add('done'); }, i * 600);
+            });
+            setTimeout(() => { steps[steps.length-1].classList.add('done'); }, steps.length * 600);
+        }
+
+        // ═══════════════════════ RESULTS ═══════════════════════
+        function showResultsFromData(data) {
+            loadingSection.classList.remove('active');
+            resultsSection.classList.add('active');
+            const { meta, structured, dataSources } = data;
+            const sections = parseMarkdownSections(data.markdown);
+
+            let html = `
+                <div class="result-header">
+                    <h2>📊 UniPick 성적 분석 결과</h2>
+                    <div class="result-meta-chips">
+                        <span class="meta-chip">📝 표준점수 합 ${meta.score}점</span>
+                        <span class="meta-chip">🎓 ${meta.major}</span>
+                        <span class="meta-chip">📂 ${meta.category}계열</span>
+                        <span class="meta-chip">${getLevelEmoji(meta.level)} ${meta.level}</span>
+                    </div>
+                    <p class="result-assessment">${sections.assessment}</p>
+                </div>
+            `;
+
+            html += '<div class="strategy-grid">';
+            html += buildStrategyCard('reach', '🚀', '상향 지원', 'Reach — 합격 확률 20~40%', sections.reach);
+            html += buildStrategyCard('target', '🎯', '적정 지원', 'Target — 합격 확률 50~70%', sections.target);
+            html += buildStrategyCard('safety', '🛡️', '안정 지원', 'Safety — 합격 확률 80% 이상', sections.safety);
+            html += '</div>';
+
+            html += `<div class="tips-card"><div class="tips-card-header">💡 UniPick 전략 팁</div><div class="tips-content">${sections.tips}</div></div>`;
+
+            if (dataSources) {
+                html += `
+                    <div class="source-card">
+                        <div class="source-card-header">📋 데이터 출처 및 산출 근거</div>
+                        <ul class="source-list">
+                            <li>1차 출처: ${dataSources.primary}</li>
+                            <li>2차 출처: ${dataSources.secondary}</li>
+                            <li>기준 연도: ${dataSources.baseYear}학년도 정시 입학 결과</li>
+                            <li>산출 방법: 합격자 표준점수 합 평균 기반 확률 산정</li>
+                            <li>${dataSources.note}</li>
+                        </ul>
+                    </div>
+                `;
+            }
+
+            html += `<div class="disclaimer">⚠️ 본 분석은 각 대학 입학처 공식 발표 자료 및 한국대학교육협의회 대입정보포털(어디가) 데이터를 기반으로 산출된 결과입니다. 실제 원서 접수 시에는 변동표준점수와 최종 경쟁률을 반드시 확인하시기 바랍니다.</div>`;
+
+            resultsContent.innerHTML = html;
+
+            // Reset chat
+            $('chatMessages').innerHTML = '<div class="chat-empty">분석 결과에 대해 궁금한 점을 질문해보세요.<br>경쟁률, 반영비율, 교차지원, 장학금 등에 대해 답변해드립니다.</div>';
+            $('chatInput').value = '';
+
+            setTimeout(() => { document.querySelectorAll('.prob-bar-fill').forEach(bar => { bar.style.width = bar.dataset.width; }); }, 300);
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+
+        function parseMarkdownSections(md) {
+            const result = { assessment: '', reach: [], target: [], safety: [], tips: '' };
+            const assessmentMatch = md.match(/성적 분석 결과[\s\S]*?\n\n([\s\S]*?)---/);
+            if (assessmentMatch) result.assessment = marked.parse(assessmentMatch[1].trim());
+            const extractEntries = (sectionTitle) => {
+                const regex = new RegExp(sectionTitle + '[\\s\\S]*?(?=####|---|### 💡|$)');
+                const m = md.match(regex);
+                if (!m) return [];
+                const entries = []; const lines = m[0].split('\n'); let cur = null;
+                for (const line of lines) {
+                    const um = line.match(/- \*\*(.+?)\*\* (.+?) — 합격 확률 약 (\d+)%/);
+                    if (um) { cur = { university: um[1], department: um[2], probability: parseInt(um[3],10), note: '' }; entries.push(cur); }
+                    const nm = line.match(/📌 (.+)/);
+                    if (nm && cur) cur.note = nm[1];
+                    if (line.includes('데이터에 포함되어 있지 않습니다')) return [];
+                }
+                return entries;
+            };
+            result.reach = extractEntries('🚀 상향 지원');
+            result.target = extractEntries('🎯 적정 지원');
+            result.safety = extractEntries('🛡️ 안정 지원');
+            const tipsMatch = md.match(/### 💡 UniPick 전략 팁\n\n([\s\S]*?)---/);
+            if (tipsMatch) result.tips = marked.parse(tipsMatch[1].trim());
+            return result;
+        }
+
+        function buildStrategyCard(type, icon, title, subtitle, entries) {
+            let html = `<div class="strategy-card ${type}"><div class="strategy-card-header"><div class="strategy-icon">${icon}</div><div><div class="strategy-card-title">${title}</div><div class="strategy-card-subtitle">${subtitle}</div></div></div>`;
+            if (!entries.length) { html += '<div class="no-data">이 구간에 해당하는 추천 대학이 없습니다.</div>'; }
+            else {
+                entries.forEach((e, i) => {
+                    html += `<div class="uni-item"><div class="uni-rank">${i+1}</div><div class="uni-info"><div class="uni-name">${e.university}</div><div class="uni-dept">${e.department}</div>${e.note ? `<div class="uni-note">📌 ${e.note}</div>` : ''}</div><div class="uni-prob"><div class="prob-value">${e.probability}%</div><div class="prob-label">합격 확률</div><div class="prob-bar"><div class="prob-bar-fill" data-width="${e.probability}%"></div></div></div></div>`;
+                });
+            }
+            html += '</div>';
+            return html;
+        }
+
+        // ═══════════════════════ CHAT ═══════════════════════
+        $('chatSendBtn').addEventListener('click', sendChatMessage);
+        $('chatInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') sendChatMessage(); });
+
+        async function sendChatMessage() {
+            const msg = $('chatInput').value.trim();
+            if (!msg) return;
+
+            // Clear empty state
+            const emptyEl = $('chatMessages').querySelector('.chat-empty');
+            if (emptyEl) emptyEl.remove();
+
+            addChatMessage('user', msg);
+            $('chatInput').value = '';
+            $('chatSendBtn').disabled = true;
+
+            if (currentConsultationId && authToken) {
+                // Save to DB & get response
+                try {
+                    const res = await fetch(`/api/consultations/${currentConsultationId}/chat`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${authToken}` },
+                        body: JSON.stringify({ message: msg })
+                    });
+                    const data = await res.json();
+                    if (data.success) {
+                        addChatMessage('assistant', data.response);
+                    }
+                } catch (e) { addChatMessage('assistant', '응답 생성 중 오류가 발생했습니다.'); }
+            } else {
+                // Local response (not logged in)
+                setTimeout(() => {
+                    addChatMessage('assistant', '로그인하시면 분석 결과를 기반으로 더 정확한 답변을 받으실 수 있습니다.\n\n현재는 로그인 없이도 기본적인 안내를 드릴 수 있습니다. 로그인 후 다시 질문해주세요!');
+                }, 500);
+            }
+            $('chatSendBtn').disabled = false;
+        }
+
+        function addChatMessage(role, content) {
+            const container = $('chatMessages');
+            const div = document.createElement('div');
+            div.className = `chat-msg ${role}`;
+            div.innerHTML = role === 'assistant' ? marked.parse(content) : content;
+            container.appendChild(div);
+            container.scrollTop = container.scrollHeight;
+        }
+
+        // ═══════════════════════ HELPERS ═══════════════════════
+        function getLevelEmoji(level) {
+            const map = { '최상위권':'🏆', '상위권':'🌟', '중상위권':'📈', '중위권':'📊', '중하위권':'📋', '하위권':'🔍' };
+            return map[level] || '📊';
+        }
+        function shakeElement(el) { el.style.animation = 'none'; el.offsetHeight; el.style.animation = 'shake 0.5s ease-in-out'; setTimeout(() => el.style.animation = '', 500); }
+        function resetToHero() {
+            loadingSection.classList.remove('active');
+            resultsSection.classList.remove('active');
+            heroSection.classList.remove('hidden');
+            submitBtn.disabled = false;
+            currentConsultationId = null;
+            currentConsultationMeta = null;
+            document.querySelectorAll('.loading-step').forEach(s => s.classList.remove('visible','done'));
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+    </script>
+</body>
+</html>

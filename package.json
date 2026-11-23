@@ -1,0 +1,29 @@
+{
+  "name": "unipick-app",
+  "version": "2.0.0",
+  "description": "UniPick — 2025학년도 서울권 21개 대학 정시 입시 분석 플랫폼",
+  "main": "server.js",
+  "dependencies": {
+    "bcryptjs": "^3.0.3",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "jsonwebtoken": "^9.0.3"
+  },
+  "optionalDependencies": {
+    "better-sqlite3": "^13.0.3"
+  },
+  "scripts": {
+    "test": "node --test tests/*.test.js",
+    "build": "npm --prefix client run build",
+    "dev:client": "npm --prefix client run dev",
+    "start": "node server.js"
+  },
+  "keywords": [
+    "unipick",
+    "admissions",
+    "korea",
+    "university"
+  ],
+  "author": "UniPick inc.",
+  "license": "ISC"
+}

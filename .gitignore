@@ -1,0 +1,24 @@
+# Dependencies
+node_modules/
+client/node_modules/
+
+# Environment & Secrets
+.env
+.env.*
+!.env.example
+
+# Local SQLite Database
+*.db
+*.db-shm
+*.db-wal
+
+# Build Outputs
+public_build/
+client/dist/
+.vercel/
+
+# Logs & OS files
+*.log
+npm-debug.log*
+.DS_Store
+Thumbs.db

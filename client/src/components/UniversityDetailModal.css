@@ -1,0 +1,327 @@
+.detail-backdrop {
+  padding: 28px 20px;
+}
+
+.detail-sheet {
+  width: 100%;
+  max-width: 620px;
+  max-height: calc(100vh - 56px);
+  overflow: hidden;
+  background-color: var(--bg-elevated);
+  border-radius: var(--radius-lg);
+  padding: 26px 28px 22px;
+  box-shadow: var(--shadow-modal);
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.detail-sheet-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding-right: 4px;
+}
+
+.detail-sheet-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.detail-pill-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+
+.detail-group-pill,
+.detail-admission-pill {
+  font-size: 11.5px;
+  font-weight: 600;
+  padding: 3px 10px;
+  border-radius: var(--radius-full);
+  background-color: var(--bg-surface);
+  color: var(--ink-secondary);
+}
+
+.detail-uni-title {
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  color: var(--ink-primary);
+}
+
+.detail-matched-dept {
+  font-size: 13.5px;
+  color: var(--ink-secondary);
+  margin-top: 4px;
+}
+
+.detail-matched-dept strong {
+  color: var(--ink-primary);
+  font-weight: 600;
+}
+
+/* ── Eval Card ── */
+.detail-eval-card {
+  padding: 18px 20px;
+  background-color: var(--bg-surface);
+  border-radius: var(--radius-md);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.detail-eval-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.detail-eval-numbers {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.eval-delta {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.eval-delta.pos { color: var(--tier-safety); }
+.eval-delta.neg { color: var(--ink-secondary); }
+
+.eval-prob {
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.detail-range-visual {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.detail-range-track {
+  position: relative;
+  height: 10px;
+  background-color: rgba(29, 29, 31, 0.08);
+  border-radius: var(--radius-full);
+}
+
+.detail-range-band {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-radius: var(--radius-full);
+}
+
+.detail-range-band.safety { background-color: rgba(30, 142, 62, 0.28); }
+.detail-range-band.target { background-color: rgba(0, 113, 227, 0.28); }
+.detail-range-band.reach { background-color: rgba(194, 94, 0, 0.28); }
+.detail-range-band.challenge { background-color: rgba(110, 110, 115, 0.24); }
+
+.detail-range-avg {
+  position: absolute;
+  top: 50%;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.detail-range-avg.safety { background-color: var(--tier-safety); }
+.detail-range-avg.target { background-color: var(--tier-target); }
+.detail-range-avg.reach { background-color: var(--tier-reach); }
+.detail-range-avg.challenge { background-color: var(--tier-challenge); }
+
+.detail-range-user {
+  position: absolute;
+  top: -4px;
+  bottom: -4px;
+  width: 2.5px;
+  border-radius: 2px;
+  background-color: var(--ink-primary);
+  transform: translateX(-50%);
+}
+
+.detail-range-labels {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11.5px;
+  color: var(--ink-tertiary);
+}
+
+.detail-eval-basis {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  font-size: 11.5px;
+  color: var(--ink-tertiary);
+  line-height: 1.5;
+}
+
+.detail-eval-basis svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+/* ── Metrics Grid ── */
+.detail-metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+
+.detail-metric-tile {
+  padding: 14px 16px;
+  background-color: var(--bg-surface);
+  border-radius: var(--radius-sm);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.detail-metric-tile.highlight {
+  background-color: var(--bg-canvas);
+  box-shadow: var(--shadow-card);
+}
+
+.detail-metric-tile span {
+  font-size: 11.5px;
+  color: var(--ink-tertiary);
+}
+
+.detail-metric-tile strong {
+  font-size: 19px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--ink-primary);
+}
+
+/* ── Info List ── */
+.detail-info-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px 0;
+  border-top: 1px solid var(--border-subtle);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.detail-info-row {
+  display: grid;
+  grid-template-columns: 84px 1fr;
+  gap: 12px;
+  font-size: 13.5px;
+  line-height: 1.6;
+}
+
+.detail-info-key {
+  font-weight: 600;
+  color: var(--ink-tertiary);
+}
+
+.detail-info-val {
+  color: var(--ink-secondary);
+}
+
+/* ── Departments ── */
+.detail-depts-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.detail-depts-heading {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-primary);
+}
+
+.detail-tracks {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.detail-track-group {
+  display: grid;
+  grid-template-columns: 54px 1fr;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.detail-track-badge {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--ink-tertiary);
+}
+
+.detail-dept-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.detail-dept-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 30px;
+  padding: 0 11px;
+  background-color: var(--bg-surface);
+  border: 1px solid transparent;
+  border-radius: var(--radius-full);
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--ink-primary);
+  transition:
+    background-color var(--duration-fast) var(--ease-apple),
+    color var(--duration-fast) var(--ease-apple);
+}
+
+.detail-dept-pill:hover {
+  background-color: var(--bg-inverse);
+  color: var(--ink-inverse);
+}
+
+/* ── Footer ── */
+.detail-sheet-footer {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding-top: 14px;
+  border-top: 1px solid var(--border-subtle);
+  flex-shrink: 0;
+}
+
+.detail-sheet-footer .btn {
+  flex: 1;
+  min-width: 150px;
+}
+
+@media (max-width: 600px) {
+  .detail-sheet {
+    padding: 22px 18px;
+    border-radius: 22px;
+  }
+
+  .detail-info-row,
+  .detail-track-group {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+}

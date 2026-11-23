@@ -1,0 +1,50 @@
+.account-modal {
+  max-width: 430px;
+}
+
+.account-meta-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 22px;
+}
+
+.account-meta-box {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 14px 16px;
+  background-color: var(--bg-surface);
+  border-radius: var(--radius-sm);
+}
+
+.account-meta-label {
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--ink-tertiary);
+}
+
+.account-meta-value {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--ink-primary);
+}
+
+.inline-save-row {
+  display: flex;
+  gap: 8px;
+}
+
+.inline-save-row .field-input {
+  flex: 1;
+}
+
+.account-footer {
+  margin-top: 24px;
+  padding-top: 18px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.account-logout-btn {
+  width: 100%;
+}
